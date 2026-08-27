@@ -10,8 +10,8 @@ from modules.dossier import build_dossier_markdown
 from modules.client_documents_pdf import build_client_documents_pdf
 from services.airtable_adapter import AirtableGold, DEFAULT_BASE_ID
 
-st.set_page_config(page_title="FINANCE_V.1.1",page_icon="🏦",layout="wide")
-st.title("FINANCE_V.1.1")
+st.set_page_config(page_title="F_P_NEUTRO V_1.1",page_icon="🏦",layout="wide")
+st.title("F_P_NEUTRO V_1.1")
 st.caption("Clienti Airtable • Document AI • Report Cliente PDF • Controllo pratiche • Centrale Rischi • Conti correnti • Business Plan • Dossier banca")
 
 def _secret_or_env(name,default=""):
@@ -37,7 +37,7 @@ def _safe_filename(value):return "".join(c if c.isalnum() or c in "-_" else "_" 
 TABS=["Dashboard","👥 Clienti","Document AI","Analytics","Centrale Rischi","Conti Correnti","Business Plan","Dossier"]
 tabs=st.tabs(TABS)
 with tabs[0]:
-    st.subheader("Centro di controllo GOLD");c1,c2,c3,c4=st.columns(4);c1.metric("CRM","Airtable reale");c2.metric("Document AI","Naming + verifica");c3.metric("Credito","Bilancio + CR + CC");c4.metric("Guardrail","No dati inventati")
+    st.subheader("Centro di controllo F_P_NEUTRO");c1,c2,c3,c4=st.columns(4);c1.metric("CRM","Airtable reale");c2.metric("Document AI","Naming + verifica");c3.metric("Credito","Bilancio + CR + CC");c4.metric("Guardrail","No dati inventati")
 with tabs[1]:
     st.subheader("👥 Anagrafica Clienti");st.caption("Scheda cliente, documenti caricati e Report Cliente PDF con controllo dossier.")
     airtable=_airtable_client()
@@ -55,12 +55,12 @@ with tabs[1]:
                 st.divider();st.subheader(client_name);a,b,c,d=st.columns(4);a.metric("Pratiche",_linked_count(f,"Pratiche"));b.metric("Documenti",_linked_count(f,"Documenti"));c.metric("Email",_linked_count(f,"Email collegate"));d.metric("Analisi",_linked_count(f,"Analisi Creditizie"))
                 col1,col2=st.columns(2)
                 with col1:st.markdown("#### Identificazione");st.write(f"**P.IVA:** {f.get('Partita IVA','—')}");st.write(f"**CF:** {f.get('Codice Fiscale','—')}");st.write(f"**PEC:** {f.get('PEC','—')}");st.write(f"**REA:** {f.get('REA','—')}")
-                with col2:st.markdown("#### Stato FinancePlus");st.write(f"**ATECO:** {f.get('ATECO','—')}");st.write(f"**Rating:** {f.get('Rating FinancePlus','—')}");st.write(f"**Ultimo bilancio:** {f.get('Ultimo bilancio disponibile','—')}");st.write(f"**CR aggiornata:** {f.get('CR aggiornata al','—')}")
+                with col2:st.markdown("#### Stato F_P_NEUTRO");st.write(f"**ATECO:** {f.get('ATECO','—')}");st.write(f"**Rating:** {f.get('Rating FinancePlus','—')}");st.write(f"**Ultimo bilancio:** {f.get('Ultimo bilancio disponibile','—')}");st.write(f"**CR aggiornata:** {f.get('CR aggiornata al','—')}")
                 doc_ids=f.get("Documenti",[]);documents=airtable.get_records_by_ids("documenti",doc_ids,max_records=500) if isinstance(doc_ids,list) and doc_ids else []
                 practice_ids=f.get("Pratiche",[]);practices=airtable.get_records_by_ids("pratiche",practice_ids,max_records=100) if isinstance(practice_ids,list) and practice_ids else []
                 st.markdown("### 📚 Riepilogo documenti e controllo pratica");view_col,pdf_col=st.columns(2);show_docs=view_col.toggle("📋 Vedi riepilogo documenti",value=False,key=f"show_docs_{selected_id}")
                 if documents:
-                    pdf_bytes=build_client_documents_pdf(client_name,documents,practices,f);pdf_col.download_button("📄 Scarica Report Cliente PDF",data=pdf_bytes,file_name=f"{_safe_filename(client_name)}_Report_Cliente_FinancePlus.pdf",mime="application/pdf",use_container_width=True,key=f"pdf_{selected_id}")
+                    pdf_bytes=build_client_documents_pdf(client_name,documents,practices,f);pdf_col.download_button("📄 Scarica Report Cliente PDF",data=pdf_bytes,file_name=f"{_safe_filename(client_name)}_Report_Cliente_F_P_NEUTRO.pdf",mime="application/pdf",use_container_width=True,key=f"pdf_{selected_id}")
                 else:pdf_col.button("📄 Nessun documento da scaricare",disabled=True,use_container_width=True,key=f"no_pdf_{selected_id}")
                 if show_docs:
                     if documents:
@@ -99,4 +99,4 @@ with tabs[6]:
 with tabs[7]:
     name=st.text_input("Cliente dossier");vat=st.text_input("P.IVA dossier")
     if st.button("Genera bozza dossier"):
-        md=build_dossier_markdown({"Cliente":name,"Partita IVA":vat});st.markdown(md);st.download_button("Scarica dossier Markdown",md,file_name="FinancePlus_GOLD_Dossier.md")
+        md=build_dossier_markdown({"Cliente":name,"Partita IVA":vat});st.markdown(md);st.download_button("Scarica dossier Markdown",md,file_name="F_P_NEUTRO_V_1.1_Dossier.md")
