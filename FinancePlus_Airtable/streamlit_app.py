@@ -8,10 +8,15 @@ import pandas as pd
 import streamlit as st
 
 from airtable_client import AirtableAPIError, AirtableClient
+from pdf_reports import (
+    build_client_documents_pdf,
+    build_documents_summary_df,
+    safe_pdf_filename,
+)
 
 
 APP_NAME = "FinancePlus Airtable"
-APP_VERSION = "1.2"
+APP_VERSION = "1.3"
 DEFAULT_BASE_ID = "appoNJtS64JIcZUhT"
 
 TABLES = {
@@ -474,6 +479,57 @@ def client_page(token: str, base_id: str) -> None:
     m3.metric("Rating", row.get("Rating FinancePlus") or "—")
     m4.metric("Pratiche", len(pratiche))
     m5.metric("Documenti", len(documenti))
+
+    st.markdown("#### Riepilogo documentale")
+    st.caption(
+        "Visualizza una tabella sintetica di tutti i documenti collegati al cliente e scaricala in PDF."
+    )
+    report_state_key = f"show_document_summary_{selected_record_id}"
+    if report_state_key not in st.session_state:
+        st.session_state[report_state_key] = False
+
+    report_col1, report_col2 = st.columns(2)
+    with report_col1:
+        if st.button(
+            "📋 Vedi riepilogo documenti",
+            key=f"show_docs_{selected_record_id}",
+            use_container_width=True,
+        ):
+            st.session_state[report_state_key] = not st.session_state[report_state_key]
+
+    with report_col2:
+        if documenti.empty:
+            st.button(
+                "⬇️ Scarica riepilogo PDF",
+                key=f"download_docs_empty_{selected_record_id}",
+                use_container_width=True,
+                disabled=True,
+            )
+        else:
+            pdf_bytes = build_client_documents_pdf(row.to_dict(), documenti)
+            st.download_button(
+                "⬇️ Scarica riepilogo PDF",
+                data=pdf_bytes,
+                file_name=safe_pdf_filename(selected_name),
+                mime="application/pdf",
+                key=f"download_docs_pdf_{selected_record_id}",
+                use_container_width=True,
+            )
+
+    if st.session_state[report_state_key]:
+        if documenti.empty:
+            st.info("Nessun documento collegato a questo cliente.")
+        else:
+            summary_view = build_documents_summary_df(documenti)
+            st.dataframe(
+                summary_view,
+                use_container_width=True,
+                hide_index=True,
+                column_config={"Drive": st.column_config.LinkColumn("Drive")},
+            )
+            st.caption(
+                f"Totale documenti nel riepilogo: {len(summary_view)}. Il PDF include tutte le righe visualizzate."
+            )
 
     tab_anagrafica, tab_pratiche, tab_documenti, tab_email, tab_analisi = st.tabs(
         ["🏢 Anagrafica", "💼 Pratiche", "📄 Documenti", "✉️ Email", "📈 Analisi creditizie"]

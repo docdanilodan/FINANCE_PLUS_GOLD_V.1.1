@@ -2,9 +2,9 @@
 
 App Streamlit dedicata alla consultazione e gestione della base Airtable **FinancePlus AI**.
 
-## Versione 1.2
+## Versione 1.3
 
-La sezione **👥 Clienti** e ora anche operativa in scrittura: oltre a consultare il dossier, puoi aggiornare l'anagrafica e gestire le pratiche direttamente da Streamlit.
+La sezione **👥 Clienti** e operativa in lettura e scrittura e include ora il riepilogo documentale PDF per ogni cliente.
 
 ### Funzioni Clienti
 
@@ -17,10 +17,20 @@ La sezione **👥 Clienti** e ora anche operativa in scrittura: oltre a consulta
 - dossier FinancePlus con CR aggiornata, ultimo bilancio, ultima visura e stato verifica;
 - tab **Pratiche** collegate;
 - tab **Documenti** collegati, con link diretto a Google Drive quando disponibile;
+- pulsante **Vedi riepilogo documenti** per mostrare la tabella sintetica di tutti i documenti del cliente;
+- pulsante **Scarica riepilogo PDF** con report A4 orizzontale multipagina, dati cliente, conteggio documenti e link Drive cliccabili quando presenti;
 - tab **Email** collegate, ordinate dalla piu recente;
 - tab **Analisi creditizie** collegate, con KPI, score, rating, DSCR, PFN/EBITDA e importi sostenibili quando presenti.
 
-### Nuove funzioni di modifica v1.2
+### Nuova reportistica documentale v1.3
+
+- riepilogo tabellare per cliente con Tipo documento, Esercizio, Data, Nome documento, Pratica, Origine, Stato verifica e Drive;
+- PDF generato al momento direttamente dai record Airtable collegati al cliente;
+- layout professionale FinancePlus, A4 orizzontale e multipagina;
+- download immediato senza salvare il PDF nel repository;
+- tutti i documenti collegati sono inclusi, anche quando un cliente ne possiede decine.
+
+### Funzioni di modifica v1.2
 
 - **Modifica anagrafica cliente** direttamente dalla scheda;
 - aggiornamento di Ragione sociale, P.IVA, CF, PEC, email, REA, sede, CAP, Comune, Provincia, forma giuridica, ATECO, attivita, capitale sociale e amministratore;
@@ -70,7 +80,7 @@ AIRTABLE_TOKEN = "pat_xxxxxxxxxxxxxxxxx"
 AIRTABLE_BASE_ID = "appoNJtS64JIcZUhT"
 ```
 
-Per usare le funzioni v1.2 il PAT Airtable deve avere accesso **in lettura e scrittura** alla base FinancePlus AI. Le credenziali non devono essere committate in GitHub.
+Per usare le funzioni di scrittura il PAT Airtable deve avere accesso **in lettura e scrittura** alla base FinancePlus AI. Le credenziali non devono essere committate in GitHub.
 
 ## Architettura
 
