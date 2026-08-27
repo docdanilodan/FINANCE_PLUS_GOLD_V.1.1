@@ -10,8 +10,8 @@ from modules.dossier import build_dossier_markdown
 from modules.client_documents_pdf import build_client_documents_pdf
 from services.airtable_adapter import AirtableGold, DEFAULT_BASE_ID
 
-st.set_page_config(page_title="FINANCE PLUS GOLD 3.2",page_icon="🏦",layout="wide")
-st.title("FINANCE PLUS GOLD 3.2")
+st.set_page_config(page_title="FINANCE_V.1.1",page_icon="🏦",layout="wide")
+st.title("FINANCE_V.1.1")
 st.caption("Clienti Airtable • Document AI • Report Cliente PDF • Controllo pratiche • Centrale Rischi • Conti correnti • Business Plan • Dossier banca")
 
 def _secret_or_env(name,default=""):
