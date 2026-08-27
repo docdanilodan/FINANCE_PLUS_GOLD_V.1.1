@@ -1,0 +1,54 @@
+name: Rename F_P Airtable V1.1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/rename-fp-airtable-v11.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  rename:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rename visible app and documentation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          app = Path('FinancePlus_Airtable/streamlit_app.py')
+          text = app.read_text(encoding='utf-8')
+          replacements = {
+              'APP_NAME = "FinancePlus Airtable"': 'APP_NAME = "F_P_ Airtable V_1.1"',
+              'APP_VERSION = "1.3"': 'APP_VERSION = "1.1"',
+              'st.header("FinancePlus Airtable")': 'st.header(APP_NAME)',
+              'st.title("📊 FinancePlus Airtable")': 'st.title(f"📊 {APP_NAME}")',
+              'st.caption(f"FinancePlus Airtable v{APP_VERSION}")': 'st.caption(APP_NAME)',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'Marker not found in streamlit_app.py: {old}')
+              text = text.replace(old, new, 1)
+          app.write_text(text, encoding='utf-8')
+
+          readme = Path('FinancePlus_Airtable/README.md')
+          r = readme.read_text(encoding='utf-8')
+          r = r.replace('# FinancePlus Airtable', '# F_P_ Airtable V_1.1', 1)
+          r = r.replace('## Versione 1.3', '## Versione 1.1', 1)
+          r = r.replace('### Nuova reportistica documentale v1.3', '### Reportistica documentale', 1)
+          r = r.replace('### Funzioni di modifica v1.2', '### Funzioni di modifica', 1)
+          readme.write_text(r, encoding='utf-8')
+          PY
+      - name: Commit rename
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add FinancePlus_Airtable/streamlit_app.py FinancePlus_Airtable/README.md
+          git diff --cached --quiet && exit 0
+          git commit -m "Rename app to F_P_ Airtable V_1.1"
+          git push
