@@ -1,0 +1,9 @@
+.streamlit/secrets.toml
+.env
+*.local.json
+__pycache__/
+*.pyc
+mail_scaricate/
+storage/originali/
+storage/elaborati/
+storage/report/
