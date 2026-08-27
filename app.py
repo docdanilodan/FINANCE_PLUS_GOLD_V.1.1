@@ -1,7 +1,13 @@
 import os
+from io import BytesIO
 
 import pandas as pd
 import streamlit as st
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from analytics_engine import FinancialInputs, analyze
 from document_ai import classify_text, suggested_name
@@ -55,6 +61,105 @@ def _records_to_df(records: list[dict], preferred: list[str] | None = None) -> p
 def _linked_count(fields: dict, name: str) -> int:
     value = fields.get(name, [])
     return len(value) if isinstance(value, list) else 0
+
+
+def _safe_filename(value: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in str(value).strip())
+    cleaned = "_".join(part for part in cleaned.split("_") if part)
+    return cleaned or "Cliente"
+
+
+def _pdf_text(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "—"
+    if isinstance(value, list):
+        return ", ".join(str(x) for x in value) if value else "—"
+    text = str(value).strip()
+    return text or "—"
+
+
+def _build_documents_pdf(client_name: str, df: pd.DataFrame) -> bytes:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=10 * mm,
+        leftMargin=10 * mm,
+        topMargin=12 * mm,
+        bottomMargin=12 * mm,
+        title=f"Riepilogo documenti - {client_name}",
+        author="FinancePlus GOLD",
+    )
+    styles = getSampleStyleSheet()
+    body_style = styles["BodyText"]
+    body_style.fontSize = 7.5
+    body_style.leading = 9
+    header_style = styles["BodyText"]
+    header_style.fontSize = 7.5
+    header_style.leading = 9
+    header_style.textColor = colors.white
+
+    story = [
+        Paragraph("FinancePlus GOLD — Riepilogo documenti cliente", styles["Title"]),
+        Spacer(1, 4 * mm),
+        Paragraph(f"<b>Cliente:</b> {_pdf_text(client_name)}", styles["Heading2"]),
+        Paragraph(f"<b>Documenti presenti:</b> {len(df)}", styles["BodyText"]),
+        Spacer(1, 4 * mm),
+    ]
+
+    preferred = [
+        "Documento",
+        "Tipo Documento",
+        "Esercizio",
+        "Data Documento",
+        "Nome Definitivo",
+        "Stato Verifica",
+        "URL Drive",
+    ]
+    columns = [c for c in preferred if c in df.columns]
+    if not columns:
+        columns = [c for c in df.columns if c != "Record ID"][:7]
+
+    header = [Paragraph(f"<b>{c}</b>", header_style) for c in columns]
+    rows = [header]
+    for _, record in df[columns].iterrows():
+        rows.append([Paragraph(_pdf_text(record.get(c)), body_style) for c in columns])
+
+    available_width = landscape(A4)[0] - 20 * mm
+    base_widths = {
+        "Documento": 45 * mm,
+        "Tipo Documento": 31 * mm,
+        "Esercizio": 18 * mm,
+        "Data Documento": 28 * mm,
+        "Nome Definitivo": 52 * mm,
+        "Stato Verifica": 28 * mm,
+        "URL Drive": 64 * mm,
+    }
+    widths = [base_widths.get(c, 35 * mm) for c in columns]
+    scale = min(1.0, available_width / sum(widths)) if widths else 1.0
+    widths = [w * scale for w in widths]
+
+    table = Table(rows, colWidths=widths, repeatRows=1, hAlign="LEFT")
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#17324D")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#B8C0C8")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F4F6F8")]),
+                ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
+    )
+    story.append(table)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
 
 
 TABS = [
@@ -136,9 +241,10 @@ with tabs[1]:
                 )
                 selected = next(r for r in filtered if r["id"] == selected_id)
                 f = selected.get("fields", {})
+                client_name = str(f.get("Cliente", "Cliente"))
 
                 st.divider()
-                st.subheader(str(f.get("Cliente", "Cliente")))
+                st.subheader(client_name)
 
                 a, b, c, d = st.columns(4)
                 a.metric("Pratiche", _linked_count(f, "Pratiche"))
@@ -187,6 +293,53 @@ with tabs[1]:
                     st.write(f"**Ultimo bilancio:** {f.get('Ultimo bilancio disponibile', '—')}")
                     if f.get("Cartella Drive"):
                         st.link_button("📁 Apri cartella Drive", f["Cartella Drive"])
+
+                st.divider()
+                st.markdown("#### 📚 Riepilogo documenti cliente")
+                document_ids = f.get("Documenti", [])
+                if isinstance(document_ids, list) and document_ids:
+                    st.caption(
+                        "Visualizza in forma tabellare tutti i documenti collegati al cliente e scarica lo stesso riepilogo in PDF."
+                    )
+                    show_docs = st.toggle(
+                        "📋 Vedi riepilogo documenti",
+                        key=f"show_document_summary_{selected_id}",
+                    )
+                    if show_docs:
+                        try:
+                            document_records = airtable.get_records_by_ids("documenti", document_ids, max_records=500)
+                            document_df = _records_to_df(
+                                document_records,
+                                [
+                                    "Documento",
+                                    "Tipo Documento",
+                                    "Esercizio",
+                                    "Data Documento",
+                                    "Nome Definitivo",
+                                    "Stato Verifica",
+                                    "URL Drive",
+                                ],
+                            )
+                        except Exception as exc:
+                            st.error(f"Impossibile leggere i documenti del cliente: {exc}")
+                            document_df = pd.DataFrame()
+
+                        if document_df.empty:
+                            st.info("Nessun dettaglio documento disponibile.")
+                        else:
+                            visible_df = document_df.drop(columns=["Record ID"], errors="ignore")
+                            st.metric("Totale documenti caricati", len(visible_df))
+                            st.dataframe(visible_df, use_container_width=True, hide_index=True)
+                            pdf_bytes = _build_documents_pdf(client_name, document_df)
+                            st.download_button(
+                                "⬇️ Scarica riepilogo documenti in PDF",
+                                data=pdf_bytes,
+                                file_name=f"{_safe_filename(client_name)}_Riepilogo_Documenti.pdf",
+                                mime="application/pdf",
+                                key=f"download_document_summary_{selected_id}",
+                            )
+                else:
+                    st.info("Nessun documento collegato a questo cliente.")
 
                 linked_sections = [
                     ("Pratiche", "pratiche", ["Pratica ID", "Tipo Pratica", "Istituto", "Importo Richiesto", "Stato", "Priorità", "Prossima azione"]),
