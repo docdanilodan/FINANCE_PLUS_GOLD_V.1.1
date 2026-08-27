@@ -1,4 +1,5 @@
 import os
+import re
 import pandas as pd
 import streamlit as st
 from analytics_engine import FinancialInputs, analyze
@@ -10,8 +11,8 @@ from modules.dossier import build_dossier_markdown
 from modules.client_documents_pdf import build_client_documents_pdf
 from services.airtable_adapter import AirtableGold, DEFAULT_BASE_ID
 
-st.set_page_config(page_title="F_P_GOLD V_1.1",page_icon="🏦",layout="wide")
-st.title("F_P_GOLD V_1.1")
+st.set_page_config(page_title="F_P_NEUTRO V_1.1",page_icon="🏦",layout="wide")
+st.title("F_P_NEUTRO V_1.1")
 st.caption("Clienti Airtable • Document AI • Report Cliente PDF • Controllo pratiche • Centrale Rischi • Conti correnti • Business Plan • Dossier banca")
 
 def _secret_or_env(name,default=""):
@@ -33,13 +34,46 @@ def _records_to_df(records,preferred=None):
 def _linked_count(fields,name):
     value=fields.get(name,[]);return len(value) if isinstance(value,list) else 0
 def _safe_filename(value):return "".join(c if c.isalnum() or c in "-_" else "_" for c in value).strip("_") or "Cliente"
+def _norm_company(value):
+    s=str(value or "").upper().replace("&"," E ")
+    replacements={
+        "SOCIETA' A RESPONSABILITA' LIMITATA":"SRL",
+        "SOCIETA A RESPONSABILITA LIMITATA":"SRL",
+        "SOCIETA' PER AZIONI":"SPA",
+        "SOCIETA PER AZIONI":"SPA",
+        "S.R.L.S.":"SRLS","S.R.L.":"SRL","S.P.A.":"SPA",
+    }
+    for old,new in replacements.items():s=s.replace(old,new)
+    s=re.sub(r"\bUNIPERSONALE\b","",s)
+    s=re.sub(r"[^A-Z0-9]+","",s)
+    for suffix in ("SRLS","SRL","SPA"):
+        if s.endswith(suffix):s=s[:-len(suffix)]
+    return s
+
+def _merge_client_documents(airtable,client_name,linked_ids):
+    linked=airtable.get_records_by_ids("documenti",linked_ids,max_records=500) if isinstance(linked_ids,list) and linked_ids else []
+    try:all_docs=airtable.list_records("documenti",max_records=3000)
+    except Exception:all_docs=[]
+    target=_norm_company(client_name)
+    by_name=[]
+    if target:
+        for record in all_docs:
+            rf=record.get("fields",{})
+            if _norm_company(rf.get("Cliente",""))==target:
+                by_name.append(record)
+    merged={}
+    for record in linked+by_name:
+        rf=record.get("fields",{})
+        key=rf.get("SHA-256") or record.get("id") or rf.get("Documento")
+        merged[str(key)]=record
+    return list(merged.values())
 
 TABS=["Dashboard","👥 Clienti","Document AI","Analytics","Centrale Rischi","Conti Correnti","Business Plan","Dossier"]
 tabs=st.tabs(TABS)
 with tabs[0]:
-    st.subheader("Centro di controllo F_P_GOLD");c1,c2,c3,c4=st.columns(4);c1.metric("CRM","Airtable reale");c2.metric("Document AI","Naming + verifica");c3.metric("Credito","Bilancio + CR + CC");c4.metric("Guardrail","No dati inventati")
+    st.subheader("Centro di controllo F_P_NEUTRO");c1,c2,c3,c4=st.columns(4);c1.metric("CRM","Airtable reale");c2.metric("Document AI","Naming + verifica");c3.metric("Credito","Bilancio + CR + CC");c4.metric("Guardrail","No dati inventati")
 with tabs[1]:
-    st.subheader("👥 Anagrafica Clienti");st.caption("Scheda cliente, documenti caricati e Report Cliente PDF con controllo dossier.")
+    st.subheader("👥 Anagrafica Clienti");st.caption("Scheda cliente, documenti caricati/importati e Report Cliente PDF con controllo dossier.")
     airtable=_airtable_client()
     if airtable is None:st.warning("Airtable non autenticato. Configurare AIRTABLE_TOKEN nei Secrets.")
     else:
@@ -52,20 +86,27 @@ with tabs[1]:
             filtered=sorted([r for r in clienti if matches(r)],key=lambda r:str(r.get("fields",{}).get("Cliente","")).casefold())
             if filtered:
                 labels={r["id"]:str(r.get("fields",{}).get("Cliente",r["id"])) for r in filtered};selected_id=st.selectbox("Seleziona cliente",[r["id"] for r in filtered],format_func=lambda rid:labels.get(rid,rid),key="client_selected");selected=next(r for r in filtered if r["id"]==selected_id);f=selected.get("fields",{});client_name=str(f.get("Cliente","Cliente"))
-                st.divider();st.subheader(client_name);a,b,c,d=st.columns(4);a.metric("Pratiche",_linked_count(f,"Pratiche"));b.metric("Documenti",_linked_count(f,"Documenti"));c.metric("Email",_linked_count(f,"Email collegate"));d.metric("Analisi",_linked_count(f,"Analisi Creditizie"))
+                doc_ids=f.get("Documenti",[]);documents=_merge_client_documents(airtable,client_name,doc_ids)
+                practice_ids=f.get("Pratiche",[]);practices=airtable.get_records_by_ids("pratiche",practice_ids,max_records=100) if isinstance(practice_ids,list) and practice_ids else []
+                st.divider();st.subheader(client_name);a,b,c,d=st.columns(4);a.metric("Pratiche",_linked_count(f,"Pratiche"));b.metric("Documenti",len(documents));c.metric("Email",_linked_count(f,"Email collegate"));d.metric("Analisi",_linked_count(f,"Analisi Creditizie"))
                 col1,col2=st.columns(2)
                 with col1:st.markdown("#### Identificazione");st.write(f"**P.IVA:** {f.get('Partita IVA','—')}");st.write(f"**CF:** {f.get('Codice Fiscale','—')}");st.write(f"**PEC:** {f.get('PEC','—')}");st.write(f"**REA:** {f.get('REA','—')}")
-                with col2:st.markdown("#### Stato F_P_GOLD");st.write(f"**ATECO:** {f.get('ATECO','—')}");st.write(f"**Rating:** {f.get('Rating FinancePlus','—')}");st.write(f"**Ultimo bilancio:** {f.get('Ultimo bilancio disponibile','—')}");st.write(f"**CR aggiornata:** {f.get('CR aggiornata al','—')}")
-                doc_ids=f.get("Documenti",[]);documents=airtable.get_records_by_ids("documenti",doc_ids,max_records=500) if isinstance(doc_ids,list) and doc_ids else []
-                practice_ids=f.get("Pratiche",[]);practices=airtable.get_records_by_ids("pratiche",practice_ids,max_records=100) if isinstance(practice_ids,list) and practice_ids else []
+                with col2:st.markdown("#### Stato F_P_NEUTRO");st.write(f"**ATECO:** {f.get('ATECO','—')}");st.write(f"**Rating:** {f.get('Rating FinancePlus','—')}");st.write(f"**Ultimo bilancio:** {f.get('Ultimo bilancio disponibile','—')}");st.write(f"**CR aggiornata:** {f.get('CR aggiornata al','—')}")
                 st.markdown("### 📚 Riepilogo documenti e controllo pratica");view_col,pdf_col=st.columns(2);show_docs=view_col.toggle("📋 Vedi riepilogo documenti",value=False,key=f"show_docs_{selected_id}")
                 if documents:
-                    pdf_bytes=build_client_documents_pdf(client_name,documents,practices,f);pdf_col.download_button("📄 Scarica Report Cliente PDF",data=pdf_bytes,file_name=f"{_safe_filename(client_name)}_Report_Cliente_F_P_GOLD.pdf",mime="application/pdf",use_container_width=True,key=f"pdf_{selected_id}")
+                    pdf_bytes=build_client_documents_pdf(client_name,documents,practices,f);pdf_col.download_button("📄 Scarica Report Cliente PDF",data=pdf_bytes,file_name=f"{_safe_filename(client_name)}_Report_Cliente_F_P_NEUTRO.pdf",mime="application/pdf",use_container_width=True,key=f"pdf_{selected_id}")
                 else:pdf_col.button("📄 Nessun documento da scaricare",disabled=True,use_container_width=True,key=f"no_pdf_{selected_id}")
                 if show_docs:
                     if documents:
-                        preferred=["Documento","Tipo Documento","Esercizio","Data Documento","Nome Originale","Nome Definitivo","Origine","Stato Verifica","URL Drive"];ddf=_records_to_df(documents,preferred).drop(columns=["Record ID"],errors="ignore");st.dataframe(ddf,use_container_width=True,hide_index=True,column_config={"URL Drive":st.column_config.LinkColumn("Drive",display_text="Apri")})
-                    else:st.info("Nessun documento collegato.")
+                        preferred=["Documento","Tipo Documento","Esercizio","Data Documento","Nome Originale","Nome Definitivo","Origine","Stato Verifica","URL Drive","Archivio ZIP sorgente","Percorso nel pacchetto"]
+                        ddf=_records_to_df(documents,preferred).drop(columns=["Record ID"],errors="ignore")
+                        if "URL Drive" not in ddf.columns:ddf["URL Drive"]=""
+                        if "Archivio ZIP sorgente" not in ddf.columns:ddf["Archivio ZIP sorgente"]=""
+                        ddf["Apri / scarica"]=ddf["URL Drive"].fillna("")
+                        fallback=ddf["Apri / scarica"].astype(str).str.strip().eq("")
+                        ddf.loc[fallback,"Apri / scarica"]=ddf.loc[fallback,"Archivio ZIP sorgente"].fillna("")
+                        st.dataframe(ddf,use_container_width=True,hide_index=True,column_config={"URL Drive":st.column_config.LinkColumn("File Drive",display_text="Apri"),"Archivio ZIP sorgente":st.column_config.LinkColumn("ZIP sorgente",display_text="Apri ZIP"),"Apri / scarica":st.column_config.LinkColumn("Apri / scarica",display_text="Apri")})
+                    else:st.info("Nessun documento collegato o riconosciuto per questo cliente.")
                 if practices:
                     with st.expander(f"⚙️ Controllo pratiche ({len(practices)})",expanded=True):
                         preferred=["Pratica ID","Tipo Pratica","Istituto","Importo Richiesto","Stato","Completezza dossier","Documenti mancanti","Alert e criticità","Prossima azione","Scadenza prossima azione","Responsabile pratica"];pdf=_records_to_df(practices,preferred).drop(columns=["Record ID"],errors="ignore");st.dataframe(pdf,use_container_width=True,hide_index=True)
@@ -99,4 +140,4 @@ with tabs[6]:
 with tabs[7]:
     name=st.text_input("Cliente dossier");vat=st.text_input("P.IVA dossier")
     if st.button("Genera bozza dossier"):
-        md=build_dossier_markdown({"Cliente":name,"Partita IVA":vat});st.markdown(md);st.download_button("Scarica dossier Markdown",md,file_name="F_P_GOLD_V_1.1_Dossier.md")
+        md=build_dossier_markdown({"Cliente":name,"Partita IVA":vat});st.markdown(md);st.download_button("Scarica dossier Markdown",md,file_name="F_P_NEUTRO_V_1.1_Dossier.md")
