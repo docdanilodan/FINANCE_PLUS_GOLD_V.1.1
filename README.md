@@ -1,57 +1,40 @@
-# FINANCE_PLUS_GOLD
+# FINANCE_PLUS_GOLD 2.0
 
-**FinancePlus GOLD** è la versione consolidata del progetto FinancePlus 360 AI: un centro operativo per documenti, email, CRM, analisi del merito creditizio e dossier bancari.
+FinancePlus GOLD è il centro operativo consolidato per **CRM, Document AI, email/documenti, Centrale Rischi, analisi conti correnti, merito creditizio, Business Plan e dossier banca**.
 
-## Architettura GOLD
+## Pipeline
 
-`Gmail / Upload → Document AI → Google Drive → Airtable → Analytics Engine → Brief / Rating / Dossier`
+`Gmail / Upload → Document AI → Drive → Airtable → Analytics Engine → CR + CC → Rating → Business Plan → Dossier`
 
-Principi:
-- storage e database separati;
-- relazioni Cliente → Pratica → Documenti / Email / Analisi;
-- SHA-256 e identificativi persistenti per deduplica;
-- calcoli finanziari deterministici;
-- IA usata per estrarre, classificare, sintetizzare e commentare;
-- **mai inventare PFN, DSCR, rating o importo finanziabile** quando i dati non sono sufficienti;
-- audit e stato `Da verificare / Verificato` per i dati decisivi.
+## Moduli GOLD 2.0
 
-## Moduli inclusi
+- `app.py`: dashboard Streamlit a 7 aree.
+- `document_ai.py`: classificazione e naming documentale.
+- `analytics_engine.py`: KPI, Data Quality Gate, score e rating AAA–D.
+- `services/airtable_adapter.py`: adapter REST verso la base reale FinancePlus AI.
+- `modules/credit_risk.py`: analisi Centrale Rischi multi-mese.
+- `modules/bank_account.py`: cash-flow da movimenti bancari CSV.
+- `modules/business_plan.py`: proiezione economica quinquennale.
+- `modules/dossier.py`: generatore dossier bancario strutturato.
 
-- `app.py` — dashboard Streamlit GOLD.
-- `document_ai.py` — classificazione e naming documentale.
-- `analytics_engine.py` — KPI, data quality, scoring e guardrail.
-- `streamlit_app.py` — entrypoint Streamlit Cloud.
+## Airtable reale verificato
 
-## Naming Document AI
+Base `FinancePlus AI`: Clienti, Pratiche, Documenti, Email, Analisi Creditizie. Sono presenti linked records Cliente/Pratica, completezza dossier, alert, CR aggiornata, rating, KPI e anagrafica camerale.
 
-Supporta prioritariamente:
-- Visura Camerale
-- Bilancio d'esercizio
-- Ricevuta deposito Bilancio
-- Centrale Rischi Banca d'Italia
-- Estratto conto
-- Fattura
-- Contratto di finanziamento
-- DURC
-- Preventivo / Offerta
-- Curriculum Vitae
+## Guardrail
 
-Le regole specifiche precedono la regola generica `SOGGETTO_TIPO DOCUMENTO_ANNO.estensione`.
+FinancePlus non deve inventare PFN, DSCR, score, rating, probabilità di delibera o importi sostenibili. I dati mancanti restano `N/D` o `INCOMPLETO`; l'IA interpreta, mentre i KPI sono calcolati deterministicamente.
 
-## FinancePlus Analytics Engine
+## Secrets
 
-KPI previsti: EBITDA margin, PFN, PFN/EBITDA, Debt/Equity, Current Ratio, DSCR e successivamente CR 12/36 mesi, cash-flow, stress test e capacità finanziabile.
+Non inserire token nel repository. Configurare in Streamlit Secrets / environment:
 
-Il motore applica un **Data Quality Gate**: con dati insufficienti restituisce `INCOMPLETO` e non forza un rating.
+```toml
+AIRTABLE_TOKEN="..."
+AIRTABLE_BASE_ID="appoNJtS64JIcZUhT"
+```
 
-## Integrazioni target
-
-- Gmail: email, thread, allegati, brief e bozze.
-- Google Drive: archivio originale e cartelle cliente/pratica.
-- Airtable: Clienti, Pratiche, Documenti, Email, Analisi Creditizie.
-- CData Connect AI: fonti SQL e metadati GitHub.
-- OpenAI Platform / ChatGPT: Document AI, sintesi e commento.
-- Adobe Acrobat: OCR e PDF difficili quando necessario.
+Le integrazioni Gmail/Drive in ChatGPT restano connettori autorizzati; per esecuzione autonoma fuori ChatGPT serviranno credenziali OAuth dedicate.
 
 ## Avvio
 
@@ -60,6 +43,4 @@ pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
-## Stato
-
-Edizione **GOLD 1.0 — 27/08/2026**. Base consolidata pronta per evolvere verso servizi Gmail/Drive/Airtable reali, report PDF e moduli CR/conti correnti/business plan.
+**Edizione GOLD 2.0 — 27/08/2026**
