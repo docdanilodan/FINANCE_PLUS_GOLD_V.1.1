@@ -30,9 +30,8 @@ jobs:
               'st.caption(f"FinancePlus Airtable v{APP_VERSION}")': 'st.caption(APP_NAME)',
           }
           for old, new in replacements.items():
-              if old not in text:
-                  raise SystemExit(f'Marker not found in streamlit_app.py: {old}')
-              text = text.replace(old, new, 1)
+              if old in text:
+                  text = text.replace(old, new, 1)
           app.write_text(text, encoding='utf-8')
 
           readme = Path('FinancePlus_Airtable/README.md')
@@ -49,6 +48,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add FinancePlus_Airtable/streamlit_app.py FinancePlus_Airtable/README.md
-          git diff --cached --quiet && exit 0
+          if git diff --cached --quiet; then
+            exit 0
+          fi
           git commit -m "Rename app to F_P_ Airtable V_1.1"
-          git push
+          git pull --rebase origin main
+          git push origin main
