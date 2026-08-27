@@ -15,8 +15,8 @@ from pdf_reports import (
 )
 
 
-APP_NAME = "FinancePlus Airtable"
-APP_VERSION = "1.3"
+APP_NAME = "F_P_ Airtable V_1.1"
+APP_VERSION = "1.1"
 DEFAULT_BASE_ID = "appoNJtS64JIcZUhT"
 
 TABLES = {
@@ -202,7 +202,7 @@ def connection_panel() -> tuple[str, str]:
     base_id = secret("AIRTABLE_BASE_ID", DEFAULT_BASE_ID)
 
     with st.sidebar:
-        st.header("FinancePlus Airtable")
+        st.header(APP_NAME)
         st.caption("CRM e anagrafica camerale")
         st.write(f"Base: `{base_id}`")
         if st.button("🔄 Aggiorna dati", use_container_width=True):
@@ -316,7 +316,7 @@ def dashboard(token: str, base_id: str) -> None:
     email = load_df(token, base_id, TABLES["Email"], EMAIL_FIELDS)
     analisi = load_df(token, base_id, TABLES["Analisi Creditizie"], ANALYSIS_FIELDS)
 
-    st.title("📊 FinancePlus Airtable")
+    st.title(f"📊 {APP_NAME}")
     st.caption("Cruscotto operativo collegato alla base Airtable FinancePlus AI")
 
     stale = clienti["Data estrazione visura"].apply(age_days).fillna(-1) > 180
@@ -946,7 +946,7 @@ def main() -> None:
             ["Dashboard", "👥 Clienti", "Pratiche", "Documenti", "Email", "Analisi Creditizie"],
         )
         st.divider()
-        st.caption(f"FinancePlus Airtable v{APP_VERSION}")
+        st.caption(APP_NAME)
 
     if page == "Dashboard":
         dashboard(token, base_id)

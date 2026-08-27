@@ -1,8 +1,8 @@
-# FinancePlus Airtable
+# F_P_ Airtable V_1.1
 
 App Streamlit dedicata alla consultazione e gestione della base Airtable **FinancePlus AI**.
 
-## Versione 1.3
+## Versione 1.1
 
 La sezione **👥 Clienti** e operativa in lettura e scrittura e include ora il riepilogo documentale PDF per ogni cliente.
 
@@ -22,7 +22,7 @@ La sezione **👥 Clienti** e operativa in lettura e scrittura e include ora il 
 - tab **Email** collegate, ordinate dalla piu recente;
 - tab **Analisi creditizie** collegate, con KPI, score, rating, DSCR, PFN/EBITDA e importi sostenibili quando presenti.
 
-### Nuova reportistica documentale v1.3
+### Reportistica documentale
 
 - riepilogo tabellare per cliente con Tipo documento, Esercizio, Data, Nome documento, Pratica, Origine, Stato verifica e Drive;
 - PDF generato al momento direttamente dai record Airtable collegati al cliente;
@@ -30,7 +30,7 @@ La sezione **👥 Clienti** e operativa in lettura e scrittura e include ora il 
 - download immediato senza salvare il PDF nel repository;
 - tutti i documenti collegati sono inclusi, anche quando un cliente ne possiede decine.
 
-### Funzioni di modifica v1.2
+### Funzioni di modifica
 
 - **Modifica anagrafica cliente** direttamente dalla scheda;
 - aggiornamento di Ragione sociale, P.IVA, CF, PEC, email, REA, sede, CAP, Comune, Provincia, forma giuridica, ATECO, attivita, capitale sociale e amministratore;
