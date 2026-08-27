@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import re
 from typing import Any, Dict, List
 
 import pandas as pd
@@ -10,7 +11,7 @@ from airtable_client import AirtableAPIError, AirtableClient
 
 
 APP_NAME = "FinancePlus Airtable"
-APP_VERSION = "1.1"
+APP_VERSION = "1.2"
 DEFAULT_BASE_ID = "appoNJtS64JIcZUhT"
 
 TABLES = {
@@ -20,6 +21,18 @@ TABLES = {
     "Email": "Email",
     "Analisi Creditizie": "Analisi Creditizie",
 }
+
+CLIENT_STATUSES = ["Attivo", "Potenziale", "Inattivo"]
+PRACTICE_TYPES = [
+    "Finanziamento", "Factoring", "Leasing", "Fideiussione",
+    "Analisi creditizia", "Business plan", "Altro",
+]
+PRACTICE_STATUSES = [
+    "Da avviare", "Documenti richiesti", "In istruttoria", "Integrazione",
+    "Deliberata", "Erogata", "Respinta", "Sospesa",
+]
+PRACTICE_PRIORITIES = ["Alta", "Media", "Bassa"]
+DOCUMENTATION_STATUSES = ["Da verificare", "Incompleta", "Completa"]
 
 CLIENT_FIELDS = [
     "Cliente", "Partita IVA", "Codice Fiscale", "PEC", "Email", "Stato Cliente",
@@ -103,14 +116,73 @@ def refresh() -> None:
     st.rerun()
 
 
-def age_days(value: Any) -> int | None:
+def set_flash(message: str, kind: str = "success") -> None:
+    st.session_state["financeplus_flash"] = (kind, message)
+
+
+def show_flash() -> None:
+    flash = st.session_state.pop("financeplus_flash", None)
+    if not flash:
+        return
+    kind, message = flash
+    if kind == "error":
+        st.error(message)
+    elif kind == "warning":
+        st.warning(message)
+    else:
+        st.success(message)
+
+
+def is_missing(value: Any) -> bool:
     if value is None or value == "":
+        return True
+    if isinstance(value, float) and pd.isna(value):
+        return True
+    return False
+
+
+def as_text(value: Any) -> str:
+    return "" if is_missing(value) else str(value)
+
+
+def as_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if is_missing(value):
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def as_int(value: Any, default: int = 0) -> int:
+    try:
+        if is_missing(value):
+            return default
+        return int(float(value))
+    except Exception:
+        return default
+
+
+def as_date(value: Any):
+    if is_missing(value):
         return None
     try:
-        dt = pd.to_datetime(value).date()
-        return (date.today() - dt).days
+        return pd.to_datetime(value).date()
     except Exception:
         return None
+
+
+def option_index(options: List[str], current: Any) -> int:
+    current_text = as_text(current)
+    try:
+        return options.index(current_text)
+    except ValueError:
+        return 0
+
+
+def age_days(value: Any) -> int | None:
+    parsed = as_date(value)
+    return None if parsed is None else (date.today() - parsed).days
 
 
 def format_currency(value: Any) -> str:
@@ -143,7 +215,7 @@ AIRTABLE_TOKEN = "pat_xxxxxxxxx"
 AIRTABLE_BASE_ID = "appoNJtS64JIcZUhT"
 ```
 
-Il token deve avere almeno accesso in lettura alla base **FinancePlus AI**. Non inserire mai il token nel codice GitHub.
+Per usare anche modifica anagrafica e gestione pratiche, il token deve avere accesso **in lettura e scrittura** alla base **FinancePlus AI**. Non inserire mai il token nel codice GitHub.
 """
         )
         st.stop()
@@ -190,6 +262,46 @@ def related_rows(df: pd.DataFrame, client_record_id: str, client_name: str) -> p
 def visible_df(df: pd.DataFrame, columns: List[str]) -> pd.DataFrame:
     visible = [column for column in columns if column in df.columns]
     return df[visible].copy() if visible else pd.DataFrame()
+
+
+def suggest_practice_id(client_name: str, practices: pd.DataFrame) -> str:
+    slug = re.sub(r"[^A-Z0-9]+", "", client_name.upper())[:18] or "CLIENTE"
+    year = date.today().year
+    prefix = f"{slug}-{year}-"
+    numbers: List[int] = []
+    if not practices.empty and "Pratica ID" in practices.columns:
+        for practice_id in practices["Pratica ID"].dropna().astype(str):
+            if practice_id.startswith(prefix):
+                tail = practice_id[len(prefix):]
+                if tail.isdigit():
+                    numbers.append(int(tail))
+    next_number = max(numbers, default=0) + 1
+    return f"{prefix}{next_number:03d}"
+
+
+def update_client_record(
+    token: str,
+    base_id: str,
+    record_id: str,
+    fields: Dict[str, Any],
+) -> None:
+    client = AirtableClient(token=token, base_id=base_id)
+    client.update_record(TABLES["Clienti"], record_id, fields)
+
+
+def create_practice_record(token: str, base_id: str, fields: Dict[str, Any]) -> None:
+    client = AirtableClient(token=token, base_id=base_id)
+    client.create_record(TABLES["Pratiche"], fields)
+
+
+def update_practice_record(
+    token: str,
+    base_id: str,
+    record_id: str,
+    fields: Dict[str, Any],
+) -> None:
+    client = AirtableClient(token=token, base_id=base_id)
+    client.update_record(TABLES["Pratiche"], record_id, fields)
 
 
 def dashboard(token: str, base_id: str) -> None:
@@ -259,11 +371,12 @@ def dashboard(token: str, base_id: str) -> None:
 
 
 def client_page(token: str, base_id: str) -> None:
+    show_flash()
     clienti = load_df(token, base_id, TABLES["Clienti"], CLIENT_FIELDS)
 
     st.title("👥 Clienti")
     st.caption(
-        f"{len(clienti)} anagrafiche Airtable. Cerca un cliente e apri l'intero dossier senza uscire da Streamlit."
+        f"{len(clienti)} anagrafiche Airtable. Cerca, consulta e aggiorna il cliente senza uscire da Streamlit."
     )
 
     q = st.text_input(
@@ -332,11 +445,8 @@ def client_page(token: str, base_id: str) -> None:
     row = records.loc[selected_record_id]
     selected_name = str(row.get("Cliente") or "")
 
-    pratiche = related_rows(
-        load_df(token, base_id, TABLES["Pratiche"], PRACTICE_FIELDS),
-        selected_record_id,
-        selected_name,
-    )
+    all_pratiche = load_df(token, base_id, TABLES["Pratiche"], PRACTICE_FIELDS)
+    pratiche = related_rows(all_pratiche, selected_record_id, selected_name)
     documenti = related_rows(
         load_df(token, base_id, TABLES["Documenti"], DOCUMENT_FIELDS),
         selected_record_id,
@@ -409,6 +519,116 @@ def client_page(token: str, base_id: str) -> None:
         if row.get("Note"):
             st.info(str(row.get("Note")))
 
+        with st.expander("✏️ Modifica anagrafica cliente", expanded=False):
+            st.caption("Le modifiche vengono salvate direttamente nella tabella Clienti di Airtable.")
+            with st.form(f"edit_client_{selected_record_id}"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    edit_name = st.text_input("Ragione sociale", value=as_text(row.get("Cliente")))
+                    edit_vat = st.text_input("Partita IVA", value=as_text(row.get("Partita IVA")))
+                    edit_cf = st.text_input("Codice Fiscale", value=as_text(row.get("Codice Fiscale")))
+                    edit_pec = st.text_input("PEC", value=as_text(row.get("PEC")))
+                    edit_email = st.text_input("Email", value=as_text(row.get("Email")))
+                    client_status_options = [""] + CLIENT_STATUSES
+                    edit_client_status = st.selectbox(
+                        "Stato Cliente",
+                        client_status_options,
+                        index=option_index(client_status_options, row.get("Stato Cliente")),
+                    )
+                    edit_rea = st.text_input("REA", value=as_text(row.get("REA")))
+                    edit_form = st.text_input("Forma giuridica", value=as_text(row.get("Forma giuridica")))
+                    edit_activity_status = st.text_input(
+                        "Stato attività", value=as_text(row.get("Stato attività"))
+                    )
+                    edit_ateco = st.text_input("ATECO", value=as_text(row.get("ATECO")))
+                with c2:
+                    edit_address = st.text_area("Sede legale", value=as_text(row.get("Sede legale")))
+                    edit_city = st.text_input("Comune", value=as_text(row.get("Comune")))
+                    edit_province = st.text_input("Provincia", value=as_text(row.get("Provincia")))
+                    edit_cap = st.text_input("CAP", value=as_text(row.get("CAP")))
+                    edit_activity = st.text_area(
+                        "Attività prevalente", value=as_text(row.get("Attività prevalente"))
+                    )
+                    edit_capital = st.number_input(
+                        "Capitale sociale EUR",
+                        min_value=0.0,
+                        value=as_float(row.get("Capitale sociale EUR")),
+                        step=1000.0,
+                    )
+                    edit_admin = st.text_input(
+                        "Rappresentante / Amministratore",
+                        value=as_text(row.get("Rappresentante/Amministratore")),
+                    )
+                    edit_visura_date = st.date_input(
+                        "Data estrazione visura", value=as_date(row.get("Data estrazione visura"))
+                    )
+                    edit_visura_status = st.text_input(
+                        "Stato verifica anagrafica",
+                        value=as_text(row.get("Stato verifica anagrafica")),
+                    )
+                e1, e2, e3, e4 = st.columns(4)
+                with e1:
+                    edit_n_visure = st.number_input(
+                        "N. visure presenti",
+                        min_value=0,
+                        value=as_int(row.get("N. visure presenti")),
+                        step=1,
+                    )
+                with e2:
+                    edit_cr_date = st.date_input(
+                        "CR aggiornata al", value=as_date(row.get("CR aggiornata al"))
+                    )
+                with e3:
+                    edit_last_balance = st.number_input(
+                        "Ultimo bilancio disponibile",
+                        min_value=0,
+                        value=as_int(row.get("Ultimo bilancio disponibile")),
+                        step=1,
+                    )
+                with e4:
+                    edit_source = st.text_input(
+                        "File sorgente visura", value=as_text(row.get("File sorgente visura"))
+                    )
+                edit_notes = st.text_area("Note", value=as_text(row.get("Note")), height=140)
+                save_client = st.form_submit_button("💾 Salva anagrafica", use_container_width=True)
+
+            if save_client:
+                if not edit_name.strip():
+                    st.error("La Ragione sociale non può essere vuota.")
+                else:
+                    fields: Dict[str, Any] = {
+                        "Cliente": edit_name.strip(),
+                        "Partita IVA": edit_vat.strip(),
+                        "Codice Fiscale": edit_cf.strip(),
+                        "PEC": edit_pec.strip(),
+                        "Email": edit_email.strip(),
+                        "Stato Cliente": edit_client_status or None,
+                        "REA": edit_rea.strip(),
+                        "Sede legale": edit_address.strip(),
+                        "Comune": edit_city.strip(),
+                        "Provincia": edit_province.strip(),
+                        "CAP": edit_cap.strip(),
+                        "Forma giuridica": edit_form.strip(),
+                        "Stato attività": edit_activity_status.strip(),
+                        "ATECO": edit_ateco.strip(),
+                        "Attività prevalente": edit_activity.strip(),
+                        "Capitale sociale EUR": edit_capital if edit_capital > 0 else None,
+                        "Rappresentante/Amministratore": edit_admin.strip(),
+                        "Data estrazione visura": edit_visura_date.isoformat() if edit_visura_date else None,
+                        "N. visure presenti": edit_n_visure if edit_n_visure > 0 else None,
+                        "File sorgente visura": edit_source.strip(),
+                        "Stato verifica anagrafica": edit_visura_status.strip(),
+                        "CR aggiornata al": edit_cr_date.isoformat() if edit_cr_date else None,
+                        "Ultimo bilancio disponibile": edit_last_balance if edit_last_balance > 0 else None,
+                        "Note": edit_notes.strip(),
+                    }
+                    try:
+                        update_client_record(token, base_id, selected_record_id, fields)
+                        set_flash(f"Anagrafica di {edit_name.strip()} aggiornata su Airtable.")
+                        refresh()
+                    except AirtableAPIError as exc:
+                        st.error(f"Salvataggio non riuscito: {exc}")
+
     with tab_pratiche:
         st.caption(f"{len(pratiche)} pratiche collegate")
         if pratiche.empty:
@@ -428,6 +648,160 @@ def client_page(token: str, base_id: str) -> None:
                 use_container_width=True,
                 hide_index=True,
             )
+
+        with st.expander("➕ Nuova pratica", expanded=pratiche.empty):
+            suggested_id = suggest_practice_id(selected_name, pratiche)
+            with st.form(f"new_practice_{selected_record_id}"):
+                n1, n2, n3 = st.columns(3)
+                with n1:
+                    new_id = st.text_input("Pratica ID", value=suggested_id)
+                    new_type = st.selectbox("Tipo pratica", PRACTICE_TYPES)
+                    new_institute = st.text_input("Istituto / intermediario")
+                with n2:
+                    new_amount = st.number_input(
+                        "Importo richiesto EUR", min_value=0.0, value=0.0, step=5000.0
+                    )
+                    new_status = st.selectbox("Stato", PRACTICE_STATUSES)
+                    new_priority = st.selectbox("Priorità", PRACTICE_PRIORITIES, index=1)
+                with n3:
+                    new_owner = st.text_input("Responsabile pratica")
+                    new_opened = st.date_input("Data apertura", value=date.today())
+                    new_due = st.date_input("Scadenza", value=None)
+                new_next_action = st.text_area("Prossima azione")
+                new_next_due = st.date_input("Scadenza prossima azione", value=None)
+                new_doc_status = st.selectbox("Stato documentazione", DOCUMENTATION_STATUSES)
+                new_missing_docs = st.text_area("Documenti mancanti")
+                new_alerts = st.text_area("Alert e criticità")
+                new_notes = st.text_area("Note")
+                create_practice = st.form_submit_button("➕ Crea pratica", use_container_width=True)
+
+            if create_practice:
+                if not new_id.strip():
+                    st.error("Pratica ID obbligatorio.")
+                else:
+                    practice_fields: Dict[str, Any] = {
+                        "Pratica ID": new_id.strip(),
+                        "Cliente": selected_name,
+                        "Cliente collegato": [selected_record_id],
+                        "Tipo Pratica": new_type,
+                        "Istituto": new_institute.strip(),
+                        "Importo Richiesto": new_amount if new_amount > 0 else None,
+                        "Stato": new_status,
+                        "Priorità": new_priority,
+                        "Responsabile pratica": new_owner.strip(),
+                        "Data Apertura": new_opened.isoformat() if new_opened else None,
+                        "Scadenza": new_due.isoformat() if new_due else None,
+                        "Prossima azione": new_next_action.strip(),
+                        "Scadenza prossima azione": new_next_due.isoformat() if new_next_due else None,
+                        "Stato documentazione": new_doc_status,
+                        "Alert e criticità": new_alerts.strip(),
+                        "Documenti mancanti": new_missing_docs.strip(),
+                        "Note": new_notes.strip(),
+                    }
+                    try:
+                        create_practice_record(token, base_id, practice_fields)
+                        set_flash(f"Pratica {new_id.strip()} creata e collegata a {selected_name}.")
+                        refresh()
+                    except AirtableAPIError as exc:
+                        st.error(f"Creazione pratica non riuscita: {exc}")
+
+        if not pratiche.empty:
+            with st.expander("📝 Aggiorna pratica / prossima azione", expanded=False):
+                practice_records = pratiche.set_index("_record_id")
+                practice_record_ids = practice_records.index.tolist()
+
+                def practice_label(record_id: str) -> str:
+                    p = practice_records.loc[record_id]
+                    return f"{p.get('Pratica ID') or record_id} · {p.get('Istituto') or 'Istituto n.d.'}"
+
+                selected_practice_id = st.selectbox(
+                    "Pratica da aggiornare",
+                    practice_record_ids,
+                    format_func=practice_label,
+                    key=f"practice_edit_{selected_record_id}",
+                )
+                practice = practice_records.loc[selected_practice_id]
+
+                with st.form(f"edit_practice_{selected_practice_id}"):
+                    p1, p2, p3 = st.columns(3)
+                    with p1:
+                        edit_practice_status = st.selectbox(
+                            "Stato",
+                            PRACTICE_STATUSES,
+                            index=option_index(PRACTICE_STATUSES, practice.get("Stato")),
+                        )
+                        edit_priority = st.selectbox(
+                            "Priorità",
+                            PRACTICE_PRIORITIES,
+                            index=option_index(PRACTICE_PRIORITIES, practice.get("Priorità")),
+                        )
+                        edit_owner = st.text_input(
+                            "Responsabile pratica", value=as_text(practice.get("Responsabile pratica"))
+                        )
+                    with p2:
+                        edit_institute = st.text_input(
+                            "Istituto", value=as_text(practice.get("Istituto"))
+                        )
+                        edit_amount = st.number_input(
+                            "Importo richiesto EUR",
+                            min_value=0.0,
+                            value=as_float(practice.get("Importo Richiesto")),
+                            step=5000.0,
+                        )
+                        edit_doc_status = st.selectbox(
+                            "Stato documentazione",
+                            DOCUMENTATION_STATUSES,
+                            index=option_index(
+                                DOCUMENTATION_STATUSES, practice.get("Stato documentazione")
+                            ),
+                        )
+                    with p3:
+                        edit_due = st.date_input("Scadenza", value=as_date(practice.get("Scadenza")))
+                        edit_next_due = st.date_input(
+                            "Scadenza prossima azione",
+                            value=as_date(practice.get("Scadenza prossima azione")),
+                        )
+                    edit_next_action = st.text_area(
+                        "Prossima azione", value=as_text(practice.get("Prossima azione"))
+                    )
+                    edit_missing_docs = st.text_area(
+                        "Documenti mancanti", value=as_text(practice.get("Documenti mancanti"))
+                    )
+                    edit_alerts = st.text_area(
+                        "Alert e criticità", value=as_text(practice.get("Alert e criticità"))
+                    )
+                    edit_practice_notes = st.text_area(
+                        "Note pratica", value=as_text(practice.get("Note"))
+                    )
+                    save_practice = st.form_submit_button(
+                        "💾 Salva aggiornamento pratica", use_container_width=True
+                    )
+
+                if save_practice:
+                    practice_update_fields: Dict[str, Any] = {
+                        "Stato": edit_practice_status,
+                        "Priorità": edit_priority,
+                        "Responsabile pratica": edit_owner.strip(),
+                        "Istituto": edit_institute.strip(),
+                        "Importo Richiesto": edit_amount if edit_amount > 0 else None,
+                        "Scadenza": edit_due.isoformat() if edit_due else None,
+                        "Prossima azione": edit_next_action.strip(),
+                        "Scadenza prossima azione": edit_next_due.isoformat() if edit_next_due else None,
+                        "Stato documentazione": edit_doc_status,
+                        "Documenti mancanti": edit_missing_docs.strip(),
+                        "Alert e criticità": edit_alerts.strip(),
+                        "Note": edit_practice_notes.strip(),
+                    }
+                    try:
+                        update_practice_record(
+                            token, base_id, selected_practice_id, practice_update_fields
+                        )
+                        set_flash(
+                            f"Pratica {practice.get('Pratica ID') or selected_practice_id} aggiornata su Airtable."
+                        )
+                        refresh()
+                    except AirtableAPIError as exc:
+                        st.error(f"Aggiornamento pratica non riuscito: {exc}")
 
     with tab_documenti:
         st.caption(f"{len(documenti)} documenti collegati")
