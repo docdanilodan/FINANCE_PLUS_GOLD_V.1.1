@@ -39,14 +39,14 @@ def build_client_documents_pdf(client_name: str, documents: list[dict], practice
     client_fields = client_fields or {}
     out = BytesIO()
     page = landscape(A4)
-    doc = SimpleDocTemplate(out, pagesize=page, leftMargin=10*mm, rightMargin=10*mm, topMargin=10*mm, bottomMargin=10*mm, title=f"FinancePlus - Report Cliente - {client_name}")
+    doc = SimpleDocTemplate(out, pagesize=page, leftMargin=10*mm, rightMargin=10*mm, topMargin=10*mm, bottomMargin=10*mm, title=f"F_P_NEUTRO - Report Cliente - {client_name}")
     styles = getSampleStyleSheet()
-    title = ParagraphStyle("GoldTitle", parent=styles["Title"], fontSize=18, leading=22, textColor=colors.HexColor("#17365D"), spaceAfter=6)
+    title = ParagraphStyle("NeutralTitle", parent=styles["Title"], fontSize=18, leading=22, textColor=colors.HexColor("#17365D"), spaceAfter=6)
     section = ParagraphStyle("Section", parent=styles["Heading2"], fontSize=12, leading=15, textColor=colors.HexColor("#17365D"), spaceBefore=4, spaceAfter=5)
     small = ParagraphStyle("Small", parent=styles["BodyText"], fontSize=7.5, leading=9)
-    body = ParagraphStyle("BodyGold", parent=styles["BodyText"], fontSize=8.5, leading=11)
+    body = ParagraphStyle("BodyNeutral", parent=styles["BodyText"], fontSize=8.5, leading=11)
 
-    story = [Paragraph("FINANCE PLUS GOLD — REPORT CLIENTE", title), Paragraph(f"<b>{_txt(client_name)}</b>", styles["Heading2"]), Paragraph("Anagrafica, controllo dossier e archivio documentale", body), Spacer(1, 5*mm)]
+    story = [Paragraph("F_P_NEUTRO V_1.1 - REPORT CLIENTE", title), Paragraph(f"<b>{_txt(client_name)}</b>", styles["Heading2"]), Paragraph("Anagrafica, controllo dossier e archivio documentale", body), Spacer(1, 5*mm)]
 
     identity = [
         ["Partita IVA", _txt(client_fields.get("Partita IVA")), "Codice Fiscale", _txt(client_fields.get("Codice Fiscale"))],
@@ -86,13 +86,15 @@ def build_client_documents_pdf(client_name: str, documents: list[dict], practice
         cattable.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#E9EEF5")),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8),("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#B7C5D5")),("LEFTPADDING",(0,0),(-1,-1),5),("RIGHTPADDING",(0,0),(-1,-1),5),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]))
         story += [Paragraph("Documenti per categoria", section), cattable]
 
-    story += [PageBreak(), Paragraph("ARCHIVIO DOCUMENTALE COMPLETO", title), Paragraph(f"Cliente: <b>{_txt(client_name)}</b> — Documenti indicizzati: <b>{len(documents)}</b>", body), Spacer(1,5*mm)]
-    headers=["N.","Documento","Tipo","Esercizio","Data","Nome originale","Nome definitivo","Origine","Stato","Drive"]
+    story += [PageBreak(), Paragraph("ARCHIVIO DOCUMENTALE COMPLETO", title), Paragraph(f"Cliente: <b>{_txt(client_name)}</b> - Documenti indicizzati: <b>{len(documents)}</b>", body), Spacer(1,5*mm)]
+    headers=["N.","Documento","Tipo","Esercizio","Data","Nome originale","Origine","Stato","File / ZIP"]
     rows=[headers]
     for idx,record in enumerate(documents,start=1):
-        f=record.get("fields",record); link=f.get("URL Drive") or ""
-        rows.append([str(idx),Paragraph(_txt(f.get("Documento")),small),Paragraph(_txt(f.get("Tipo Documento")),small),_txt(f.get("Esercizio")),_txt(f.get("Data Documento")),Paragraph(_txt(f.get("Nome Originale")),small),Paragraph(_txt(f.get("Nome Definitivo")),small),_txt(f.get("Origine")),_txt(f.get("Stato Verifica")),Paragraph(f'<link href="{link}">Apri</link>' if link else "—",small)])
-    widths=[8,38,25,15,20,42,42,18,22,14]
+        f=record.get("fields",record)
+        link=f.get("URL Drive") or f.get("Archivio ZIP sorgente") or ""
+        label="File" if f.get("URL Drive") else ("ZIP" if f.get("Archivio ZIP sorgente") else "—")
+        rows.append([str(idx),Paragraph(_txt(f.get("Documento")),small),Paragraph(_txt(f.get("Tipo Documento")),small),_txt(f.get("Esercizio")),_txt(f.get("Data Documento")),Paragraph(_txt(f.get("Nome Originale") or f.get("Percorso nel pacchetto")),small),_txt(f.get("Origine")),_txt(f.get("Stato Verifica")),Paragraph(f'<link href="{link}">{label}</link>' if link else "—",small)])
+    widths=[8,48,27,16,20,56,18,24,18]
     table=Table(rows,colWidths=[w*mm for w in widths],repeatRows=1)
     table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#17365D")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),7.5),("VALIGN",(0,0),(-1,-1),"TOP"),("GRID",(0,0),(-1,-1),0.25,colors.grey),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F7F9FB")]),("LEFTPADDING",(0,0),(-1,-1),3),("RIGHTPADDING",(0,0),(-1,-1),3),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
     story.append(table)
