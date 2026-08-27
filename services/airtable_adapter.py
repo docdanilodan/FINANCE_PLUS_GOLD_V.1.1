@@ -35,6 +35,20 @@ class AirtableGold:
             params["offset"] = data["offset"]
         return out[:max_records]
 
+    def get_record(self, table: str, record_id: str) -> dict:
+        r = self.session.get(f"{self._url(TABLES[table])}/{record_id}", timeout=30)
+        r.raise_for_status()
+        return r.json()
+
+    def get_records_by_ids(self, table: str, record_ids: Iterable[str], max_records: int = 100) -> list[dict]:
+        out: list[dict] = []
+        for record_id in list(record_ids)[:max_records]:
+            try:
+                out.append(self.get_record(table, record_id))
+            except requests.HTTPError:
+                continue
+        return out
+
     def create_record(self, table: str, fields: Dict[str, Any]) -> dict:
         r = self.session.post(self._url(TABLES[table]), json={"fields": fields, "typecast": True}, timeout=30)
         r.raise_for_status(); return r.json()
