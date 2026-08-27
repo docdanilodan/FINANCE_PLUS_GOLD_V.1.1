@@ -12,7 +12,7 @@ from services.airtable_adapter import AirtableGold, DEFAULT_BASE_ID
 
 st.set_page_config(page_title="FINANCE PLUS GOLD 3.2",page_icon="🏦",layout="wide")
 st.title("FINANCE PLUS GOLD 3.2")
-st.caption("Clienti Airtable • Document AI • Documenti PDF • Controllo pratiche • Centrale Rischi • Conti correnti • Business Plan • Dossier banca")
+st.caption("Clienti Airtable • Document AI • Report Cliente PDF • Controllo pratiche • Centrale Rischi • Conti correnti • Business Plan • Dossier banca")
 
 def _secret_or_env(name,default=""):
     try:value=st.secrets.get(name,"")
@@ -39,7 +39,7 @@ tabs=st.tabs(TABS)
 with tabs[0]:
     st.subheader("Centro di controllo GOLD");c1,c2,c3,c4=st.columns(4);c1.metric("CRM","Airtable reale");c2.metric("Document AI","Naming + verifica");c3.metric("Credito","Bilancio + CR + CC");c4.metric("Guardrail","No dati inventati")
 with tabs[1]:
-    st.subheader("👥 Anagrafica Clienti");st.caption("Scheda cliente, documenti caricati e PDF operativo con controllo pratiche.")
+    st.subheader("👥 Anagrafica Clienti");st.caption("Scheda cliente, documenti caricati e Report Cliente PDF con controllo dossier.")
     airtable=_airtable_client()
     if airtable is None:st.warning("Airtable non autenticato. Configurare AIRTABLE_TOKEN nei Secrets.")
     else:
@@ -60,7 +60,7 @@ with tabs[1]:
                 practice_ids=f.get("Pratiche",[]);practices=airtable.get_records_by_ids("pratiche",practice_ids,max_records=100) if isinstance(practice_ids,list) and practice_ids else []
                 st.markdown("### 📚 Riepilogo documenti e controllo pratica");view_col,pdf_col=st.columns(2);show_docs=view_col.toggle("📋 Vedi riepilogo documenti",value=False,key=f"show_docs_{selected_id}")
                 if documents:
-                    pdf_bytes=build_client_documents_pdf(client_name,documents,practices);pdf_col.download_button("📄 Scarica PDF completo",data=pdf_bytes,file_name=f"{_safe_filename(client_name)}_Documenti_e_Controllo_Pratiche.pdf",mime="application/pdf",use_container_width=True,key=f"pdf_{selected_id}")
+                    pdf_bytes=build_client_documents_pdf(client_name,documents,practices,f);pdf_col.download_button("📄 Scarica Report Cliente PDF",data=pdf_bytes,file_name=f"{_safe_filename(client_name)}_Report_Cliente_FinancePlus.pdf",mime="application/pdf",use_container_width=True,key=f"pdf_{selected_id}")
                 else:pdf_col.button("📄 Nessun documento da scaricare",disabled=True,use_container_width=True,key=f"no_pdf_{selected_id}")
                 if show_docs:
                     if documents:
