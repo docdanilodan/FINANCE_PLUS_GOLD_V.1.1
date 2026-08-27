@@ -87,3 +87,17 @@ Per usare le funzioni di scrittura il PAT Airtable deve avere accesso **in lettu
 `Streamlit UI -> Airtable REST API -> FinancePlus AI base`
 
 L'app resta separata dal motore analitico FINANCE_PLUS_GOLD ed e un front-end CRM/Airtable dedicato a consultazione, dossier cliente e gestione operativa delle pratiche.
+
+
+## Fascicolo Cliente PDF
+
+Dalla scheda **Clienti** e disponibile il pulsante **Scarica Fascicolo Cliente PDF**. Il dossier viene generato al momento dai record Airtable collegati e comprende:
+
+- anagrafica camerale e dati identificativi;
+- rating, ultimo bilancio, Centrale Rischi e stato verifica;
+- conteggio documenti per categoria e archivio documentale completo con link Drive;
+- pratiche, stato documentazione, completezza, documenti mancanti, prossime azioni, scadenze e alert;
+- email collegate con priorita, azione richiesta, allegati e sintesi IA;
+- analisi creditizie con KPI, score, rating, importi sostenibili, punti di forza, criticita e raccomandazioni.
+
+I campi non presenti restano indicati con `—`: il Fascicolo Cliente non ricostruisce o inventa dati mancanti.

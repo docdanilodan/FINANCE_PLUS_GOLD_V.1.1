@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from airtable_client import AirtableAPIError, AirtableClient
+from client_fascicolo import build_client_fascicolo_pdf, safe_fascicolo_filename
 from pdf_reports import (
     build_client_documents_pdf,
     build_documents_summary_df,
@@ -530,6 +531,30 @@ def client_page(token: str, base_id: str) -> None:
             st.caption(
                 f"Totale documenti nel riepilogo: {len(summary_view)}. Il PDF include tutte le righe visualizzate."
             )
+
+    st.markdown("#### 📁 Fascicolo Cliente PDF")
+    st.caption(
+        "Genera un unico dossier con anagrafica, documenti, pratiche, documenti mancanti, email e analisi creditizie."
+    )
+    fascicolo_bytes = build_client_fascicolo_pdf(
+        row.to_dict(),
+        documenti,
+        pratiche,
+        email,
+        analisi,
+    )
+    st.download_button(
+        "📁 Scarica Fascicolo Cliente PDF",
+        data=fascicolo_bytes,
+        file_name=safe_fascicolo_filename(selected_name),
+        mime="application/pdf",
+        key=f"download_fascicolo_pdf_{selected_record_id}",
+        use_container_width=True,
+    )
+    st.caption(
+        f"Contenuto: {len(documenti)} documenti · {len(pratiche)} pratiche · "
+        f"{len(email)} email · {len(analisi)} analisi creditizie."
+    )
 
     tab_anagrafica, tab_pratiche, tab_documenti, tab_email, tab_analisi = st.tabs(
         ["🏢 Anagrafica", "💼 Pratiche", "📄 Documenti", "✉️ Email", "📈 Analisi creditizie"]
