@@ -36,4 +36,19 @@ jobs:
           python -m py_compile modules/*.py services/*.py FinancePlus_Airtable/client_fascicolo.py
 
       - name: Run tests
-        run: pytest -q
+        id: pytest
+        shell: bash
+        run: |
+          set +e
+          pytest -q > pytest-output.txt 2>&1
+          code=$?
+          cat pytest-output.txt
+          exit $code
+
+      - name: Upload pytest diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-diagnostic
+          path: pytest-output.txt
+          if-no-files-found: warn
