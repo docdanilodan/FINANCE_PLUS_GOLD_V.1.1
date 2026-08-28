@@ -1,53 +1,96 @@
-# FINANCE_PLUS_GOLD 3.0
+# FINANCE_PLUS_UNICO V_1.0
 
-FinancePlus GOLD integra **CRM Airtable, Gmail, Google Drive, Document AI, Centrale Rischi, conti correnti, Analytics Engine, Business Plan e dossier bancario PDF**.
+Questa repository espone **una sola app Streamlit master**, costruita consolidando le migliori funzioni delle precedenti varianti FinancePlus GOLD / NEUTRO / PLATINUM / DIAMOND / Airtable.
 
-## Pipeline GOLD 3.0
+## Entry point unico
 
-`Gmail → allegati → deduplica SHA-256 → Document AI → Drive → Airtable → verifica → Analytics → CR + CC → Rating → Business Plan → Dossier PDF`
+Per Streamlit Cloud usare:
 
-## Componenti
+```text
+streamlit_app.py
+```
 
-- `app.py` — dashboard Streamlit GOLD.
-- `document_ai.py` — classificazione/naming con regole FinancePlus.
-- `analytics_engine.py` — KPI, Data Quality Gate, score/rating.
-- `services/airtable_adapter.py` — CRUD/upsert Airtable.
-- `services/google_auth.py` — OAuth Google da Secret.
-- `services/gmail_drive_pipeline.py` — ingestion Gmail→Drive→Airtable.
-- `modules/credit_risk.py` — Centrale Rischi.
-- `modules/bank_account.py` — cash-flow conti correnti.
-- `modules/business_plan.py` — proiezione 5 anni.
-- `modules/dossier.py` — dossier Markdown.
-- `modules/pdf_dossier.py` — dossier PDF professionale.
+Anche i precedenti `app.py` e `FinancePlus_Airtable/streamlit_app.py` sono mantenuti esclusivamente come **compatibility entrypoint** e aprono la stessa app master.
 
-## Stato Airtable
+## Funzioni integrate
 
-La struttura FinancePlus è relazionale: `Clienti → Pratiche → Documenti / Email / Analisi Creditizie`. L'anagrafica camerale può includere P.IVA, CF, PEC, REA, sede, CAP, ATECO, capitale sociale, amministratore e stato verifica.
+1. **Dashboard operativa** con Clienti, Pratiche, Documenti, Email, Analisi e alert dossier.
+2. **Clienti Airtable** con ricerca, anagrafica camerale, modifica dati e linked records.
+3. **Pratiche** con creazione dal cliente, banca/intermediario, importo, priorità, responsabile, prossima azione, scadenza e documenti mancanti.
+4. **Archivio documentale** con filtri, origine, stato verifica, SHA-256 e link Drive.
+5. **Report Cliente PDF** con documenti e controllo pratiche.
+6. **Fascicolo Cliente PDF** con anagrafica, documenti, pratiche, email e analisi creditizie.
+7. **Document AI** content-first per classificazione e naming di visure, bilanci, ricevute deposito, bozze, analitici, prospetti, CR, estratti conto, fatture, contratti, DURC, CV, offerte, preventivi e presentazioni.
+8. **Gmail → Drive → Airtable** con deduplica `Gmail Message ID` + `SHA-256` e matching Cliente/Pratica.
+9. **Multi-profilo Google**: oltre a `GOOGLE_OAUTH_TOKEN_JSON`, si possono aggiungere Secrets del tipo `GOOGLE_OAUTH_TOKEN_JSON_<NOME>` e scegliere la casella dalla UI.
+10. **FinancePlus Analytics Engine** con Data Quality Gate, EBITDA margin, PFN, PFN/EBITDA, Debt/Equity, Current Ratio, DSCR, score, rating AAA–D e semaforo.
+11. **Centrale Rischi** multi-mese con utilizzo affidamenti, scaduti/sconfinamenti e sofferenze.
+12. **Conti correnti** con entrate, uscite, cash-flow netto, media mensile e mesi negativi.
+13. **Business Plan** a 5 anni.
+14. **Dossier Banca** PDF + Markdown.
+15. **Mandati** con simulatore parametrico del compenso e storico CSV della sessione.
 
-## Sicurezza e Data Quality
+## Pipeline unica
 
-- Nessun token/API key nel repository.
-- Deduplica documenti tramite SHA-256.
-- Documenti provenienti dalla pipeline entrano inizialmente come `Da verificare`.
-- Il nome originario non è prova sufficiente della tipologia documentale.
-- Rating, PFN, DSCR, probabilità delibera e capacità finanziabile non vengono inventati.
+```text
+Gmail / Upload
+  → Document AI
+  → Deduplica SHA-256
+  → Google Drive
+  → Airtable CRM
+  → Analytics + Centrale Rischi + Conti Correnti
+  → Business Plan
+  → Dossier Banca / Fascicolo Cliente PDF
+```
 
-## Secrets richiesti per esecuzione autonoma
+## Principio di controllo
+
+FinancePlus non inventa dati finanziari mancanti. Se la fonte non consente di calcolare correttamente PFN, DSCR, rating o altri indicatori, il dato resta `N/D` / `INCOMPLETO` e viene segnalato dal Data Quality Gate.
+
+## Secrets Streamlit
+
+Configurare esclusivamente nei Secrets del deployment:
 
 ```toml
-AIRTABLE_TOKEN="..."
-AIRTABLE_BASE_ID="appoNJtS64JIcZUhT"
-GOOGLE_OAUTH_TOKEN_JSON='{"token":"...","refresh_token":"...","client_id":"...","client_secret":"...","token_uri":"https://oauth2.googleapis.com/token"}'
-GOOGLE_DRIVE_FOLDER_ID="..."
+AIRTABLE_TOKEN = "..."
+AIRTABLE_BASE_ID = "appoNJtS64JIcZUhT"
+GOOGLE_OAUTH_TOKEN_JSON = "..."
+GOOGLE_DRIVE_FOLDER_ID = "..."
+
+# Profili Google aggiuntivi opzionali
+GOOGLE_OAUTH_TOKEN_JSON_STUDIO = "..."
+GOOGLE_OAUTH_TOKEN_JSON_PRATICHE = "..."
 ```
 
-Le connessioni Gmail/Drive già autorizzate dentro ChatGPT non trasferiscono automaticamente le credenziali a Streamlit: il deploy autonomo richiede OAuth Google dedicato.
+I token non devono essere pubblicati nel repository.
 
-## Avvio
+## Architettura
 
-```bash
-pip install -r requirements.txt
-streamlit run streamlit_app.py
+- **GitHub**: codice e versionamento.
+- **Airtable**: CRM e dati strutturati.
+- **Google Drive**: storage documentale.
+- **Gmail**: sorgente email/allegati.
+- **Streamlit**: interfaccia operativa.
+- **Secrets**: credenziali e token.
+
+## File principali
+
+```text
+streamlit_app.py              # entrypoint unico
+master_app.py                 # UI master
+analytics_engine.py           # KPI, score e Data Quality Gate
+document_ai.py                # classificazione e naming
+modules/                      # CR, CC, BP, dossier, PDF, mandati
+services/                     # Airtable, Gmail/Drive, matching cliente/pratica
+FinancePlus_Airtable/         # generatori PDF e compatibilità legacy
 ```
 
-**Edizione GOLD 3.0 — 27/08/2026**
+## Deploy
+
+Main file path consigliato:
+
+```text
+streamlit_app.py
+```
+
+Dopo aver configurato i Secrets, il deploy usa direttamente la base Airtable e, se autorizzato, i profili Gmail/Drive selezionabili dalla schermata dedicata.
