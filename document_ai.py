@@ -15,9 +15,7 @@ class DocumentResult:
     confidence: float = 0.0
 
 
-# Specific categories come before generic ones. The scoring still uses the
-# number of matching markers, so a deposited-balance receipt is not confused
-# with the balance sheet itself.
+# Specific categories come before generic ones.
 RULES = [
     (
         "Ricevuta deposito Bilancio d'esercizio",
@@ -83,6 +81,20 @@ RULES = [
     ("Curriculum Vitae", ["curriculum vitae", "esperienza professionale"]),
 ]
 
+# Explicit/specialized document types must win over generic balance-sheet terms.
+# A draft balance, for example, often also contains "stato patrimoniale" and
+# "conto economico": those generic markers must not promote it to a final
+# statutory balance sheet.
+PRIORITY_THRESHOLDS = {
+    "Ricevuta deposito Bilancio d'esercizio": 2,
+    "Bozza bilancio": 1,
+    "Bilancio analitico": 1,
+    "Prospetto bilancio": 1,
+    "Presentazione aziendale": 1,
+    "Centrale Rischi Banca d'Italia": 2,
+    "Estratto conto": 2,
+}
+
 
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -90,12 +102,25 @@ def sha256_bytes(data: bytes) -> str:
 
 def classify_text(text: str) -> DocumentResult:
     blob = re.sub(r"\s+", " ", (text or "").lower())
+
+    # First pass: honor the strong semantic identity of specialized documents.
+    for category, markers in RULES:
+        threshold = PRIORITY_THRESHOLDS.get(category)
+        if threshold is None:
+            continue
+        hits = sum(1 for marker in markers if marker in blob)
+        if category == "Estratto conto" and "estratto conto" in blob:
+            hits = max(hits, threshold)
+        if hits >= threshold:
+            confidence = min(0.99, 0.62 + hits * 0.10)
+            return DocumentResult(category=category, confidence=confidence)
+
+    # Second pass: use ordinary marker scoring for the remaining categories.
     best_category = "Altro"
     best_hits = 0
     best_index = len(RULES)
     for index, (category, markers) in enumerate(RULES):
         hits = sum(1 for marker in markers if marker in blob)
-        # On equal scores, prefer the more specific rule appearing first.
         if hits > best_hits or (hits and hits == best_hits and index < best_index):
             best_category = category
             best_hits = hits
