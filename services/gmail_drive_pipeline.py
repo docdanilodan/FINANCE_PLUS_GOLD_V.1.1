@@ -121,6 +121,24 @@ def _airtable_type(category: str) -> str:
     return AIRTABLE_TYPE_MAP.get(category, "Altro")
 
 
+def _append_source(existing: str, source_email: str) -> str:
+    sources = [x.strip() for x in str(existing or "").replace(";", "\n").splitlines() if x.strip()]
+    if source_email.casefold() not in {x.casefold() for x in sources}:
+        sources.append(source_email)
+    return "\n".join(sources)
+
+
+def _register_duplicate_source(airtable: AirtableGold, sha: str, source_email: str) -> bool:
+    existing = airtable.find_one("documenti", "SHA-256", sha)
+    if not existing:
+        return False
+    fields = existing.get("fields", {})
+    merged = _append_source(fields.get("Caselle origine", ""), source_email)
+    if merged != str(fields.get("Caselle origine", "") or ""):
+        airtable.update_record("documenti", existing["id"], {"Caselle origine": merged})
+    return True
+
+
 def sync_gmail_attachments(
     query: str = "has:attachment newer_than:1d -in:spam -in:trash",
     drive_folder_id: str | None = None,
@@ -128,20 +146,21 @@ def sync_gmail_attachments(
 ) -> dict:
     """Archive new Gmail attachments to Drive and index them in Airtable.
 
-    Each attachment is matched independently. This prevents a multi-client email
-    from assigning every attachment to the same customer. Exact duplicates are
-    blocked by SHA-256. Uncertain attachments go to DA_VERIFICARE and are not
-    linked to any client.
+    Each attachment is matched independently. Exact duplicates are blocked by
+    SHA-256, but the mailbox of provenance is preserved on the existing document.
+    Uncertain attachments go to DA_VERIFICARE and are not linked to any client.
     """
     creds = load_credentials()
     gmail = build("gmail", "v1", credentials=creds, cache_discovery=False)
     drive = build("drive", "v3", credentials=creds, cache_discovery=False)
     airtable = AirtableGold()
+    source_email = gmail.users().getProfile(userId="me").execute().get("emailAddress", "Gmail")
     result = {
         "messages": 0,
         "attachments": 0,
         "uploaded": 0,
         "duplicates": 0,
+        "duplicate_sources_updated": 0,
         "matched": 0,
         "archived_by_client": 0,
         "pending_review": 0,
@@ -166,8 +185,12 @@ def sync_gmail_attachments(
                 header["name"].lower(): header["value"]
                 for header in msg["payload"].get("headers", [])
             }
+            source_key = f"GMAIL:{source_email.casefold()}:{msg['id']}"
 
-            if _already_indexed(airtable, "email", "Gmail Message ID", msg["id"]):
+            if (
+                _already_indexed(airtable, "email", "Message ID sorgente", source_key)
+                or _already_indexed(airtable, "email", "Gmail Message ID", msg["id"])
+            ):
                 result["duplicates"] += 1
                 continue
 
@@ -176,6 +199,7 @@ def sync_gmail_attachments(
             )
             email_match = match_client_practice(airtable, context)
             email_confident = bool(email_match.client_id and email_match.confidence >= 0.80)
+            attachment_names: list[str] = []
 
             for part in _walk(msg["payload"].get("parts", [])):
                 filename = part.get("filename", "")
@@ -183,6 +207,7 @@ def sync_gmail_attachments(
                 if not filename or not attachment_id:
                     continue
 
+                attachment_names.append(filename)
                 result["attachments"] += 1
                 encoded = gmail.users().messages().attachments().get(
                     userId="me",
@@ -192,8 +217,9 @@ def sync_gmail_attachments(
                 raw = base64.urlsafe_b64decode(encoded + "===")
                 sha = hashlib.sha256(raw).hexdigest()
 
-                if _already_indexed(airtable, "documenti", "SHA-256", sha):
+                if _register_duplicate_source(airtable, sha, source_email):
                     result["duplicates"] += 1
+                    result["duplicate_sources_updated"] += 1
                     continue
 
                 attachment_context = f"{filename} {context}"
@@ -235,6 +261,7 @@ def sync_gmail_attachments(
                     "Nome IA Suggerito": saved["name"],
                     "Nome Definitivo": saved["name"],
                     "Origine": "Gmail",
+                    "Caselle origine": source_email,
                     "URL Drive": saved.get("webViewLink", ""),
                     "SHA-256": sha,
                     "Stato Verifica": "Da verificare",
@@ -258,7 +285,10 @@ def sync_gmail_attachments(
                 "Oggetto": headers.get("subject", "(senza oggetto)"),
                 "Mittente": headers.get("from", ""),
                 "Gmail Message ID": msg["id"],
+                "Casella origine": source_email,
+                "Message ID sorgente": source_key,
                 "Sintesi IA": msg.get("snippet", ""),
+                "Allegati": "\n".join(attachment_names),
             }
             if email_confident:
                 email_fields["Cliente"] = email_match.client_name or ""
