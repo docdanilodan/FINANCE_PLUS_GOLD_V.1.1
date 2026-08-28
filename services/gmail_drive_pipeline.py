@@ -99,7 +99,6 @@ def _find_or_create_folder(drive, name: str, parent_id: str | None = None) -> st
 
 
 def _archive_destination(drive, root_folder_id: str | None, client_name: str | None, category: str) -> tuple[str | None, str]:
-    """Return the folder id and a human-readable archive path."""
     root = root_folder_id
     archive_root = _find_or_create_folder(drive, "FINANCE_V.1.1_ARCHIVIO", root)
     clients_root = _find_or_create_folder(drive, "CLIENTI", archive_root)
@@ -129,11 +128,10 @@ def sync_gmail_attachments(
 ) -> dict:
     """Archive new Gmail attachments to Drive and index them in Airtable.
 
-    Behaviour:
-    - exact duplicates are blocked by SHA-256 before upload;
-    - confident client matches are stored under that client's archive;
-    - uncertain matches are never assigned to a client and go to DA_VERIFICARE;
-    - semantic verification remains separate: new records stay Da verificare.
+    Each attachment is matched independently. This prevents a multi-client email
+    from assigning every attachment to the same customer. Exact duplicates are
+    blocked by SHA-256. Uncertain attachments go to DA_VERIFICARE and are not
+    linked to any client.
     """
     creds = load_credentials()
     gmail = build("gmail", "v1", credentials=creds, cache_discovery=False)
@@ -176,10 +174,8 @@ def sync_gmail_attachments(
             context = " ".join(
                 [headers.get("subject", ""), headers.get("from", ""), msg.get("snippet", "")]
             )
-            match = match_client_practice(airtable, context)
-            confident_client = bool(match.client_id and match.confidence >= 0.80)
-            if confident_client:
-                result["matched"] += 1
+            email_match = match_client_practice(airtable, context)
+            email_confident = bool(email_match.client_id and email_match.confidence >= 0.80)
 
             for part in _walk(msg["payload"].get("parts", [])):
                 filename = part.get("filename", "")
@@ -200,16 +196,22 @@ def sync_gmail_attachments(
                     result["duplicates"] += 1
                     continue
 
-                classification = classify_text(filename + " " + context)
+                attachment_context = f"{filename} {context}"
+                file_match = match_client_practice(airtable, attachment_context)
+                confident_client = bool(file_match.client_id and file_match.confidence >= 0.80)
+                if confident_client:
+                    result["matched"] += 1
+
+                classification = classify_text(attachment_context)
                 ext = os.path.splitext(filename)[1] or ".bin"
                 if confident_client:
-                    classification.company_name = match.client_name or ""
+                    classification.company_name = file_match.client_name or ""
                 proposed = suggested_name(classification, extension=ext)
 
                 destination_id, archive_path = _archive_destination(
                     drive,
                     drive_folder_id,
-                    match.client_name if confident_client else None,
+                    file_match.client_name if confident_client else None,
                     classification.category,
                 )
 
@@ -240,15 +242,15 @@ def sync_gmail_attachments(
                 }
 
                 if confident_client:
-                    fields["Cliente"] = match.client_name or ""
-                    fields["Cliente collegato"] = [match.client_id]
+                    fields["Cliente"] = file_match.client_name or ""
+                    fields["Cliente collegato"] = [file_match.client_id]
                     result["archived_by_client"] += 1
                 else:
                     result["pending_review"] += 1
 
-                if match.practice_id and confident_client:
-                    fields["Pratica ID"] = match.practice_code or ""
-                    fields["Pratica collegata"] = [match.practice_id]
+                if file_match.practice_id and confident_client:
+                    fields["Pratica ID"] = file_match.practice_code or ""
+                    fields["Pratica collegata"] = [file_match.practice_id]
 
                 airtable.create_record("documenti", fields)
 
@@ -258,12 +260,12 @@ def sync_gmail_attachments(
                 "Gmail Message ID": msg["id"],
                 "Sintesi IA": msg.get("snippet", ""),
             }
-            if confident_client:
-                email_fields["Cliente"] = match.client_name or ""
-                email_fields["Cliente collegato"] = [match.client_id]
-            if match.practice_id and confident_client:
-                email_fields["Pratica ID"] = match.practice_code or ""
-                email_fields["Pratica collegata"] = [match.practice_id]
+            if email_confident:
+                email_fields["Cliente"] = email_match.client_name or ""
+                email_fields["Cliente collegato"] = [email_match.client_id]
+            if email_match.practice_id and email_confident:
+                email_fields["Pratica ID"] = email_match.practice_code or ""
+                email_fields["Pratica collegata"] = [email_match.practice_id]
             airtable.create_record("email", email_fields)
 
         except Exception as exc:
