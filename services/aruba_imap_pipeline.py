@@ -5,10 +5,9 @@ import imaplib
 import io
 import os
 import ssl
-from datetime import date, datetime
+from datetime import date
 from email import policy
 from email.parser import BytesParser
-from email.utils import parsedate_to_datetime
 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
@@ -107,12 +106,11 @@ def sync_aruba_attachments(
     host: str = DEFAULT_IMAP_HOST,
     port: int = DEFAULT_IMAP_PORT,
 ) -> dict:
-    """Read Aruba IMAP, archive attachments to Drive and index them in Airtable.
+    """Read one Aruba IMAP mailbox, archive attachments and index them in Airtable.
 
-    The source mailbox is kept distinct through a stable ARUBA key stored in the
-    existing message-id field. Attachments are deduplicated globally by SHA-256.
-    Client/practice matching and Document AI follow the same FinancePlus rules
-    already used by the Gmail pipeline.
+    Each mailbox has its own stable source key. Attachments are deduplicated globally
+    by SHA-256, while client/practice matching and document classification use the
+    same FinancePlus rules already used by the Gmail pipeline.
     """
     drive = build("drive", "v3", credentials=load_credentials(), cache_discovery=False)
     airtable = AirtableGold()
@@ -215,11 +213,11 @@ def sync_aruba_attachments(
                         "Nome Originale": filename,
                         "Nome IA Suggerito": saved["name"],
                         "Nome Definitivo": saved["name"],
-                        "Origine": "Gmail",
+                        "Origine": "Altro",
                         "URL Drive": saved.get("webViewLink", ""),
                         "SHA-256": sha,
                         "Stato Verifica": "Da verificare",
-                        "Percorso nel pacchetto": f"EMAIL/{account_email}/{archive_path}",
+                        "Percorso nel pacchetto": f"EMAIL_ARUBA/{account_email}/{archive_path}",
                     }
                     if confident_client:
                         fields["Cliente"] = file_match.client_name or ""
