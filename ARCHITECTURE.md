@@ -1,18 +1,70 @@
-# FinancePlus GOLD — Architettura target
+# FINANCE_PLUS_UNICO V_1.0 — Architettura
 
-## Layer
-1. **UI**: Streamlit, dashboard, filtri, anteprime.
-2. **Services**: mail, documenti, IA, scoring, report, CData.
-3. **Database**: Airtable operativo; PostgreSQL target robusto.
-4. **Storage**: Drive / filesystem controllato / S3-compatible.
-5. **Audit**: hash, source ID, stato verifica, log operazioni.
+## Obiettivo
 
-## Data model minimo
-- Clienti: denominazione, PIVA/CF, PEC, Drive, rating corrente.
-- Pratiche: cliente, istituto, importo, stato, priorità, prossima azione.
-- Email: message_id, thread_id, mittente, oggetto, data, pratica.
-- Documenti: source_id, sha256, categoria, periodo, URL, stato verifica.
-- Analisi Creditizie: KPI, score, rating, criticità, versione e fonte.
+Una sola interfaccia Streamlit e un solo flusso operativo, mantenendo separati codice, dati, documenti e credenziali.
 
-## Regola critica
-Nessuna pagina UI deve contenere direttamente credenziali o logica di accesso a Gmail, Drive, Airtable, CData o OpenAI. Le integrazioni devono essere incapsulate nei servizi.
+```text
+Utente
+  ↓
+streamlit_app.py
+  ↓
+master_app.py
+  ├─ Dashboard / Brief operativo
+  ├─ Clienti + Pratiche
+  ├─ Archivio Documenti
+  ├─ Document AI
+  ├─ Gmail & Drive
+  ├─ Analytics Engine
+  ├─ Centrale Rischi
+  ├─ Conti Correnti
+  ├─ Business Plan
+  ├─ Dossier Banca
+  └─ Mandati
+```
+
+## Data layer
+
+```text
+Airtable FinancePlus AI
+  Clienti
+    → Pratiche
+    → Documenti
+    → Email
+    → Analisi Creditizie
+```
+
+Airtable è il CRM strutturato. Google Drive conserva i file. Gmail alimenta la pipeline documentale. GitHub conserva esclusivamente il codice.
+
+## Pipeline documentale
+
+```text
+Gmail / Upload
+  → lettura contenuto
+  → Document AI
+  → naming
+  → SHA-256
+  → matching Cliente / Pratica
+  → Google Drive
+  → Airtable
+  → alert / dossier
+```
+
+## Pipeline creditizia
+
+```text
+Bilancio + CR + Conti correnti
+  → Data Quality Gate
+  → KPI deterministici
+  → score / rating solo se supportati
+  → Business Plan
+  → Dossier Banca / Fascicolo Cliente
+```
+
+## Sicurezza
+
+Le credenziali sono caricate dai Secrets del deployment. Nessun token Airtable o Google deve essere scritto nei file del repository.
+
+## Compatibilità
+
+`app.py` e `FinancePlus_Airtable/streamlit_app.py` sono compatibility entrypoint: entrambi aprono `master_app.py`. La UI operativa è quindi unica anche se un vecchio deployment conserva un percorso storico.
