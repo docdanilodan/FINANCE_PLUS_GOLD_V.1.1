@@ -1,0 +1,39 @@
+name: FinancePlus unified CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+
+      - name: Compile unified app
+        run: |
+          python -m py_compile master_app.py streamlit_app.py app.py
+          python -m py_compile analytics_engine.py document_ai.py
+          python -m py_compile modules/*.py services/*.py FinancePlus_Airtable/client_fascicolo.py
+
+      - name: Run tests
+        run: pytest -q
