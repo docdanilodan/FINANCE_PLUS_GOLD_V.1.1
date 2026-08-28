@@ -8,6 +8,7 @@ import ssl
 from datetime import date
 from email import policy
 from email.parser import BytesParser
+from email.utils import parseaddr, parsedate_to_datetime
 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
@@ -16,7 +17,7 @@ from pypdf import PdfReader
 from document_ai import classify_text, suggested_name
 from services.airtable_adapter import AirtableGold
 from services.client_practice_matcher import match_client_practice
-from services.gmail_drive_pipeline import _airtable_type, _already_indexed, _archive_destination
+from services.gmail_drive_pipeline import _airtable_type, _archive_destination
 from services.google_auth import load_credentials
 
 DEFAULT_IMAP_HOST = "imaps.aruba.it"
@@ -97,6 +98,41 @@ def _imap_since(value: str | date | None) -> str:
     return d.strftime("%d-%b-%Y")
 
 
+def _message_datetime(msg) -> str | None:
+    raw = str(msg.get("Date") or "").strip()
+    if not raw:
+        return None
+    try:
+        return parsedate_to_datetime(raw).isoformat()
+    except Exception:
+        return None
+
+
+def _append_source(existing: str, account_email: str) -> str:
+    sources = [x.strip() for x in str(existing or "").replace(";", "\n").splitlines() if x.strip()]
+    if account_email.casefold() not in {x.casefold() for x in sources}:
+        sources.append(account_email)
+    return "\n".join(sources)
+
+
+def _find_source_message(airtable: AirtableGold, source_key: str) -> dict | None:
+    return (
+        airtable.find_one("email", "Message ID sorgente", source_key)
+        or airtable.find_one("email", "Gmail Message ID", source_key)
+    )
+
+
+def _register_duplicate_source(airtable: AirtableGold, sha: str, account_email: str) -> bool:
+    existing = airtable.find_one("documenti", "SHA-256", sha)
+    if not existing:
+        return False
+    fields = existing.get("fields", {})
+    merged = _append_source(fields.get("Caselle origine", ""), account_email)
+    if merged != str(fields.get("Caselle origine", "") or ""):
+        airtable.update_record("documenti", existing["id"], {"Caselle origine": merged})
+    return True
+
+
 def sync_aruba_attachments(
     account_email: str,
     password: str,
@@ -106,11 +142,11 @@ def sync_aruba_attachments(
     host: str = DEFAULT_IMAP_HOST,
     port: int = DEFAULT_IMAP_PORT,
 ) -> dict:
-    """Read one Aruba IMAP mailbox, archive attachments and index them in Airtable.
+    """Read one Aruba mailbox, archive attachments and index them in Airtable.
 
-    Each mailbox has its own stable source key. Attachments are deduplicated globally
-    by SHA-256, while client/practice matching and document classification use the
-    same FinancePlus rules already used by the Gmail pipeline.
+    Mailboxes are independent sources. Messages are deduplicated by a stable
+    source-specific key. Attachments are deduplicated globally by SHA-256 while
+    all source mailboxes remain recorded on the single document record.
     """
     drive = build("drive", "v3", credentials=load_credentials(), cache_discovery=False)
     airtable = AirtableGold()
@@ -121,6 +157,7 @@ def sync_aruba_attachments(
         "attachments": 0,
         "uploaded": 0,
         "duplicates": 0,
+        "duplicate_sources_updated": 0,
         "matched": 0,
         "archived_by_client": 0,
         "pending_review": 0,
@@ -150,18 +187,20 @@ def sync_aruba_attachments(
                 result["messages"] += 1
 
                 subject = str(msg.get("Subject") or "(senza oggetto)")
-                sender = str(msg.get("From") or "")
+                sender_raw = str(msg.get("From") or "")
+                sender_email = parseaddr(sender_raw)[1] or sender_raw
                 message_id = str(msg.get("Message-ID") or "").strip()
-                source_key = f"ARUBA:{account_email}:{message_id or uid_text}"
+                source_key = f"ARUBA:{account_email.casefold()}:{message_id or uid_text}"
 
-                if _already_indexed(airtable, "email", "Gmail Message ID", source_key):
+                if _find_source_message(airtable, source_key):
                     result["duplicates"] += 1
                     continue
 
                 body = _message_body(msg)
-                context = f"{subject}\n{sender}\n{body[:12000]}"
+                context = f"{subject}\n{sender_raw}\n{body[:12000]}"
                 email_match = match_client_practice(airtable, context)
                 email_confident = bool(email_match.client_id and email_match.confidence >= 0.80)
+                attachment_names: list[str] = []
 
                 for part in msg.iter_attachments():
                     filename = str(part.get_filename() or "").strip()
@@ -170,10 +209,13 @@ def sync_aruba_attachments(
                     raw = part.get_payload(decode=True) or b""
                     if not raw:
                         continue
+                    attachment_names.append(filename)
                     result["attachments"] += 1
                     sha = hashlib.sha256(raw).hexdigest()
-                    if _already_indexed(airtable, "documenti", "SHA-256", sha):
+
+                    if _register_duplicate_source(airtable, sha, account_email):
                         result["duplicates"] += 1
+                        result["duplicate_sources_updated"] += 1
                         continue
 
                     extracted = _attachment_text(filename, part.get_content_type(), raw)
@@ -214,11 +256,14 @@ def sync_aruba_attachments(
                         "Nome IA Suggerito": saved["name"],
                         "Nome Definitivo": saved["name"],
                         "Origine": "Altro",
+                        "Caselle origine": account_email,
                         "URL Drive": saved.get("webViewLink", ""),
                         "SHA-256": sha,
                         "Stato Verifica": "Da verificare",
                         "Percorso nel pacchetto": f"EMAIL_ARUBA/{account_email}/{archive_path}",
                     }
+                    if classification.document_year:
+                        fields["Esercizio"] = int(classification.document_year)
                     if confident_client:
                         fields["Cliente"] = file_match.client_name or ""
                         fields["Cliente collegato"] = [file_match.client_id]
@@ -233,10 +278,15 @@ def sync_aruba_attachments(
                 snippet = body.replace("\r", " ").replace("\n", " ")[:1500]
                 email_fields = {
                     "Oggetto": subject,
-                    "Mittente": sender,
-                    "Gmail Message ID": source_key,
-                    "Sintesi IA": f"Fonte Aruba IMAP: {account_email}. {snippet}",
+                    "Mittente": sender_email,
+                    "Casella origine": account_email,
+                    "Message ID sorgente": source_key,
+                    "Sintesi IA": snippet,
+                    "Allegati": "\n".join(attachment_names),
                 }
+                msg_dt = _message_datetime(msg)
+                if msg_dt:
+                    email_fields["Data e ora"] = msg_dt
                 if email_confident:
                     email_fields["Cliente"] = email_match.client_name or ""
                     email_fields["Cliente collegato"] = [email_match.client_id]
