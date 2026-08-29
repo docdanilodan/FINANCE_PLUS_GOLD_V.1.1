@@ -11,7 +11,7 @@ permissions:
 jobs:
   archive-aruba:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,6 +35,6 @@ jobs:
           ARUBA_D_DANGELO_PASSWORD: ${{ secrets.ARUBA_D_DANGELO_PASSWORD }}
           ARUBA_PRATICHE_EMAIL: "pratiche@financeplus.tech"
           ARUBA_PRATICHE_PASSWORD: ${{ secrets.ARUBA_PRATICHE_PASSWORD }}
-          FINANCEPLUS_ARUBA_SINCE_DAYS: "2"
+          FINANCEPLUS_ARUBA_SINCE_DATE: "2026-01-01"
           FINANCEPLUS_ARUBA_MAX_MESSAGES: "200"
         run: python scripts/sync_aruba_archive.py
