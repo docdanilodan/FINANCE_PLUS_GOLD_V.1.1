@@ -7,6 +7,9 @@ from datetime import date, timedelta
 from services.aruba_imap_pipeline import sync_aruba_attachments
 
 
+DEFAULT_BACKFILL_DATE = "2026-01-01"
+
+
 def _days_ago(days: int) -> str:
     return (date.today() - timedelta(days=max(0, days))).isoformat()
 
@@ -24,11 +27,20 @@ def _accounts() -> list[tuple[str, str]]:
     ]
 
 
+def _since_date() -> str:
+    explicit = os.getenv("FINANCEPLUS_ARUBA_SINCE_DATE", "").strip()
+    if explicit:
+        return explicit
+    since_days = os.getenv("FINANCEPLUS_ARUBA_SINCE_DAYS", "").strip()
+    if since_days:
+        return _days_ago(int(since_days))
+    return DEFAULT_BACKFILL_DATE
+
+
 def main() -> int:
-    since_days = int(os.getenv("FINANCEPLUS_ARUBA_SINCE_DAYS", "2"))
     max_messages = int(os.getenv("FINANCEPLUS_ARUBA_MAX_MESSAGES", "200"))
     drive_folder_id = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "").strip() or None
-    since = _days_ago(since_days)
+    since = _since_date()
 
     summary = {
         "since": since,
@@ -38,9 +50,12 @@ def main() -> int:
             "attachments": 0,
             "uploaded": 0,
             "duplicates": 0,
+            "duplicate_sources_updated": 0,
             "matched": 0,
             "archived_by_client": 0,
             "pending_review": 0,
+            "client_updates": 0,
+            "skipped_indexed_messages": 0,
             "errors": 0,
         },
     }
@@ -73,9 +88,12 @@ def main() -> int:
                 "attachments",
                 "uploaded",
                 "duplicates",
+                "duplicate_sources_updated",
                 "matched",
                 "archived_by_client",
                 "pending_review",
+                "client_updates",
+                "skipped_indexed_messages",
             ):
                 summary["totals"][key] += int(result.get(key, 0) or 0)
             summary["totals"]["errors"] += len(result.get("errors") or [])
