@@ -4,15 +4,19 @@ import hashlib
 import imaplib
 import io
 import os
+import re
 import ssl
-from datetime import date
+from datetime import date, datetime
 from email import policy
 from email.parser import BytesParser
 from email.utils import parseaddr, parsedate_to_datetime
 
+from docx import Document
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
+from openpyxl import load_workbook
 from pypdf import PdfReader
+from pptx import Presentation
 
 from document_ai import classify_text, suggested_name
 from services.airtable_adapter import AirtableGold
@@ -63,29 +67,92 @@ def _decode_text(part) -> str:
 
 
 def _message_body(msg) -> str:
-    chunks: list[str] = []
+    plain: list[str] = []
+    html: list[str] = []
     if msg.is_multipart():
         for part in msg.walk():
             if part.get_content_disposition() == "attachment":
                 continue
             if part.get_content_type() == "text/plain":
-                chunks.append(_decode_text(part))
+                plain.append(_decode_text(part))
+            elif part.get_content_type() == "text/html":
+                html.append(_decode_text(part))
     elif msg.get_content_type() == "text/plain":
-        chunks.append(_decode_text(msg))
-    return "\n".join(chunks).strip()
+        plain.append(_decode_text(msg))
+    elif msg.get_content_type() == "text/html":
+        html.append(_decode_text(msg))
+
+    if plain:
+        return "\n".join(plain).strip()
+    if html:
+        text = re.sub(r"<script\b[^>]*>.*?</script>", " ", "\n".join(html), flags=re.I | re.S)
+        text = re.sub(r"<style\b[^>]*>.*?</style>", " ", text, flags=re.I | re.S)
+        text = re.sub(r"<[^>]+>", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+    return ""
+
+
+def _pdf_text(raw: bytes) -> str:
+    reader = PdfReader(io.BytesIO(raw))
+    return "\n".join((page.extract_text() or "") for page in reader.pages)
+
+
+def _docx_text(raw: bytes) -> str:
+    doc = Document(io.BytesIO(raw))
+    chunks = [paragraph.text for paragraph in doc.paragraphs if paragraph.text]
+    for table in doc.tables:
+        for row in table.rows:
+            chunks.append(" | ".join(cell.text for cell in row.cells))
+    return "\n".join(chunks)
+
+
+def _xlsx_text(raw: bytes) -> str:
+    workbook = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+    chunks: list[str] = []
+    cells = 0
+    try:
+        for sheet in workbook.worksheets:
+            chunks.append(f"FOGLIO: {sheet.title}")
+            for row in sheet.iter_rows(values_only=True):
+                values = [str(value) for value in row if value not in (None, "")]
+                if values:
+                    chunks.append(" | ".join(values))
+                cells += len(row)
+                if cells >= 12000:
+                    return "\n".join(chunks)
+    finally:
+        workbook.close()
+    return "\n".join(chunks)
+
+
+def _pptx_text(raw: bytes) -> str:
+    presentation = Presentation(io.BytesIO(raw))
+    chunks: list[str] = []
+    for slide in presentation.slides:
+        for shape in slide.shapes:
+            if hasattr(shape, "text") and shape.text:
+                chunks.append(shape.text)
+    return "\n".join(chunks)
 
 
 def _attachment_text(filename: str, mime_type: str, raw: bytes) -> str:
     ext = os.path.splitext(filename or "")[1].lower()
     try:
         if ext == ".pdf" or mime_type == "application/pdf":
-            reader = PdfReader(io.BytesIO(raw))
-            return "\n".join((page.extract_text() or "") for page in reader.pages)[:120000]
-        if ext in {".txt", ".csv", ".md", ".xml", ".json"} or mime_type.startswith("text/"):
-            return raw.decode("utf-8", errors="replace")[:120000]
+            text = _pdf_text(raw)
+        elif ext == ".docx":
+            text = _docx_text(raw)
+        elif ext in {".xlsx", ".xlsm", ".xltx"}:
+            text = _xlsx_text(raw)
+        elif ext == ".pptx":
+            text = _pptx_text(raw)
+        elif ext in {".txt", ".csv", ".md", ".xml", ".json", ".html", ".htm"} or mime_type.startswith("text/"):
+            text = raw.decode("utf-8", errors="replace")
+        else:
+            text = ""
     except Exception:
         return ""
-    return ""
+    return text[:160000]
 
 
 def _imap_since(value: str | date | None) -> str:
@@ -122,14 +189,87 @@ def _find_source_message(airtable: AirtableGold, source_key: str) -> dict | None
     )
 
 
+def _existing_source_keys(airtable: AirtableGold, account_email: str) -> set[str]:
+    keys: set[str] = set()
+    try:
+        records = airtable.list_records("email", max_records=8000)
+    except Exception:
+        return keys
+    target = account_email.casefold()
+    for record in records:
+        fields = record.get("fields", {})
+        mailbox = str(fields.get("Casella origine") or fields.get("Casella sorgente") or "").casefold()
+        if mailbox != target:
+            continue
+        value = str(fields.get("Message ID sorgente") or "").strip()
+        if value:
+            keys.add(value)
+    return keys
+
+
 def _register_duplicate_source(airtable: AirtableGold, sha: str, account_email: str) -> bool:
     existing = airtable.find_one("documenti", "SHA-256", sha)
     if not existing:
         return False
     fields = existing.get("fields", {})
     merged = _append_source(fields.get("Caselle origine", ""), account_email)
+    updates = {}
     if merged != str(fields.get("Caselle origine", "") or ""):
-        airtable.update_record("documenti", existing["id"], {"Caselle origine": merged})
+        updates["Caselle origine"] = merged
+    if not fields.get("Casella sorgente"):
+        updates["Casella sorgente"] = account_email
+    if updates:
+        airtable.update_record("documenti", existing["id"], updates)
+    return True
+
+
+def _date_is_newer(candidate: str | None, current: str | None) -> bool:
+    if not candidate:
+        return False
+    if not current:
+        return True
+    try:
+        return date.fromisoformat(candidate[:10]) > date.fromisoformat(str(current)[:10])
+    except ValueError:
+        return True
+
+
+def _update_client_document_state(
+    airtable: AirtableGold,
+    client_id: str,
+    category: str,
+    document_year: int | None,
+    reference_date: str | None,
+    filename: str,
+) -> bool:
+    try:
+        client = airtable.get_record("clienti", client_id)
+    except Exception:
+        return False
+    fields = client.get("fields", {})
+    updates = {}
+
+    if category == "Bilancio d'esercizio" and document_year:
+        current_year = fields.get("Ultimo bilancio disponibile")
+        try:
+            current_year = int(current_year) if current_year not in (None, "") else None
+        except (TypeError, ValueError):
+            current_year = None
+        if current_year is None or int(document_year) > current_year:
+            updates["Ultimo bilancio disponibile"] = int(document_year)
+
+    if category == "Centrale Rischi Banca d'Italia" and reference_date:
+        if _date_is_newer(reference_date, fields.get("CR aggiornata al")):
+            updates["CR aggiornata al"] = reference_date[:10]
+
+    if category == "Visura Camerale" and reference_date:
+        if _date_is_newer(reference_date, fields.get("Data estrazione visura")):
+            updates["Data estrazione visura"] = reference_date[:10]
+            updates["File sorgente visura"] = filename
+
+    if not updates:
+        return False
+    airtable.update_record("clienti", client_id, updates)
     return True
 
 
@@ -142,15 +282,17 @@ def sync_aruba_attachments(
     host: str = DEFAULT_IMAP_HOST,
     port: int = DEFAULT_IMAP_PORT,
 ) -> dict:
-    """Read one Aruba mailbox, archive attachments and index them in Airtable.
+    """Read one Aruba mailbox and apply the FinancePlus document workflow.
 
-    Mailboxes are independent sources. Messages are deduplicated by a stable
-    source-specific key. Attachments are deduplicated globally by SHA-256 while
-    all source mailboxes remain recorded on the single document record.
+    The flow mirrors the Gmail archive: content-aware classification, client/practice
+    matching, global SHA-256 deduplication, Drive filing and Airtable indexing.
+    On a backlog, messages are processed oldest-first; already indexed IMAP UIDs are
+    skipped so scheduled runs automatically advance until the historical archive is done.
     """
     drive = build("drive", "v3", credentials=load_credentials(), cache_discovery=False)
     airtable = AirtableGold()
     client = _connect(account_email, password, host, port)
+    existing_source_keys = _existing_source_keys(airtable, account_email)
     result = {
         "account": account_email,
         "messages": 0,
@@ -161,6 +303,8 @@ def sync_aruba_attachments(
         "matched": 0,
         "archived_by_client": 0,
         "pending_review": 0,
+        "client_updates": 0,
+        "skipped_indexed_messages": 0,
         "errors": [],
     }
 
@@ -173,31 +317,38 @@ def sync_aruba_attachments(
         if status != "OK":
             raise RuntimeError("Ricerca IMAP non riuscita.")
         uids = [u for u in (data[0] or b"").split() if u]
-        if max_messages > 0:
-            uids = uids[-int(max_messages):]
+        processed_new = 0
 
         for uid in uids:
             uid_text = uid.decode("ascii", errors="ignore")
+            source_key = f"ARUBA:{account_email.casefold()}:UID:{uid_text}"
+            if source_key in existing_source_keys:
+                result["skipped_indexed_messages"] += 1
+                continue
+            if max_messages > 0 and processed_new >= int(max_messages):
+                break
+
             try:
                 status, payload = client.uid("fetch", uid, "(RFC822)")
                 if status != "OK" or not payload or not payload[0]:
                     raise RuntimeError("Messaggio IMAP non leggibile.")
                 raw_message = payload[0][1]
                 msg = BytesParser(policy=policy.default).parsebytes(raw_message)
-                result["messages"] += 1
 
+                message_id = str(msg.get("Message-ID") or "").strip()
+                legacy_key = f"ARUBA:{account_email.casefold()}:{message_id or uid_text}"
+                if legacy_key != source_key and _find_source_message(airtable, legacy_key):
+                    result["duplicates"] += 1
+                    existing_source_keys.add(source_key)
+                    continue
+
+                processed_new += 1
+                result["messages"] += 1
                 subject = str(msg.get("Subject") or "(senza oggetto)")
                 sender_raw = str(msg.get("From") or "")
                 sender_email = parseaddr(sender_raw)[1] or sender_raw
-                message_id = str(msg.get("Message-ID") or "").strip()
-                source_key = f"ARUBA:{account_email.casefold()}:{message_id or uid_text}"
-
-                if _find_source_message(airtable, source_key):
-                    result["duplicates"] += 1
-                    continue
-
                 body = _message_body(msg)
-                context = f"{subject}\n{sender_raw}\n{body[:12000]}"
+                context = f"{subject}\n{sender_raw}\n{body[:16000]}"
                 email_match = match_client_practice(airtable, context)
                 email_confident = bool(email_match.client_id and email_match.confidence >= 0.80)
                 attachment_names: list[str] = []
@@ -220,12 +371,12 @@ def sync_aruba_attachments(
 
                     extracted = _attachment_text(filename, part.get_content_type(), raw)
                     attachment_context = f"{filename}\n{context}\n{extracted}"
-                    file_match = match_client_practice(airtable, attachment_context[:120000])
+                    file_match = match_client_practice(airtable, attachment_context[:160000])
                     confident_client = bool(file_match.client_id and file_match.confidence >= 0.80)
                     if confident_client:
                         result["matched"] += 1
 
-                    classification = classify_text(attachment_context[:120000])
+                    classification = classify_text(attachment_context[:160000])
                     ext = os.path.splitext(filename)[1] or ".bin"
                     if confident_client:
                         classification.company_name = file_match.client_name or ""
@@ -257,6 +408,7 @@ def sync_aruba_attachments(
                         "Nome Definitivo": saved["name"],
                         "Origine": "Altro",
                         "Caselle origine": account_email,
+                        "Casella sorgente": account_email,
                         "URL Drive": saved.get("webViewLink", ""),
                         "SHA-256": sha,
                         "Stato Verifica": "Da verificare",
@@ -264,6 +416,10 @@ def sync_aruba_attachments(
                     }
                     if classification.document_year:
                         fields["Esercizio"] = int(classification.document_year)
+                    if classification.reference_date:
+                        fields["Data Documento"] = classification.reference_date[:10]
+                    if extracted:
+                        fields["Sintesi IA"] = re.sub(r"\s+", " ", extracted)[:1800]
                     if confident_client:
                         fields["Cliente"] = file_match.client_name or ""
                         fields["Cliente collegato"] = [file_match.client_id]
@@ -275,11 +431,22 @@ def sync_aruba_attachments(
                         fields["Pratica collegata"] = [file_match.practice_id]
                     airtable.create_record("documenti", fields)
 
+                    if confident_client and _update_client_document_state(
+                        airtable,
+                        file_match.client_id,
+                        classification.category,
+                        classification.document_year,
+                        classification.reference_date,
+                        saved["name"],
+                    ):
+                        result["client_updates"] += 1
+
                 snippet = body.replace("\r", " ").replace("\n", " ")[:1500]
                 email_fields = {
                     "Oggetto": subject,
                     "Mittente": sender_email,
                     "Casella origine": account_email,
+                    "Casella sorgente": account_email,
                     "Message ID sorgente": source_key,
                     "Sintesi IA": snippet,
                     "Allegati": "\n".join(attachment_names),
@@ -294,6 +461,7 @@ def sync_aruba_attachments(
                     email_fields["Pratica ID"] = email_match.practice_code or ""
                     email_fields["Pratica collegata"] = [email_match.practice_id]
                 airtable.create_record("email", email_fields)
+                existing_source_keys.add(source_key)
 
             except Exception as exc:
                 result["errors"].append({"uid": uid_text, "error": str(exc)})
