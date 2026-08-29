@@ -23,6 +23,44 @@ def test_detailed_financeplus_categories():
     assert classify_text("centrale rischi banca d'italia accordato utilizzato").category == "Centrale Rischi Banca d'Italia"
 
 
+def test_receipt_uses_balance_year_not_protocol_year():
+    r = classify_text(
+        "Ricevuta dell'avvenuta presentazione via telematica deposito bilancio. "
+        "Data atto 31/12/2023. Protocollo del 22/02/2025. Diritti di segreteria."
+    )
+    assert r.category == "Ricevuta deposito Bilancio d'esercizio"
+    assert r.document_year == 2023
+
+
+def test_central_risk_period_and_reference_date():
+    r = classify_text(
+        "Centrale Rischi Banca d'Italia - mese di riferimento luglio 2026 - accordato utilizzato"
+    )
+    assert r.category == "Centrale Rischi Banca d'Italia"
+    assert r.document_year == 2026
+    assert r.period == "luglio 2026"
+    assert r.reference_date == "2026-07-31"
+
+
+def test_bank_statement_metadata():
+    r = classify_text(
+        "Estratto conto Intesa Sanpaolo IBAN saldo movimenti dal 01/04/2026 al 30/06/2026"
+    )
+    assert r.category == "Estratto conto"
+    assert r.bank == "Intesa Sanpaolo"
+    assert r.document_year == 2026
+    assert r.period == "2° trimestre"
+    assert r.reference_date == "2026-06-30"
+
+
+def test_visura_reference_date():
+    r = classify_text(
+        "Camera di Commercio Registro Imprese Visura ordinaria - data estrazione 24/08/2026"
+    )
+    assert r.category == "Visura Camerale"
+    assert r.reference_date == "2026-08-24"
+
+
 def test_mandate_calculation_is_deterministic():
     result = calculate_mandate(
         MandateInputs(
