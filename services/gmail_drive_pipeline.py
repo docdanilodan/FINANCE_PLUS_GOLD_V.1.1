@@ -53,6 +53,9 @@ ARCHIVE_FOLDER_MAP = {
     "Altro": "ALTRI_DOCUMENTI",
 }
 
+HIGHLY_CONFIDENTIAL_TYPES = {"Centrale Rischi", "Estratto conto", "Dichiarazione fiscale", "Documento identità"}
+CONFIDENTIAL_TYPES = {"Bilancio", "Situazione contabile", "Contratto", "Fattura", "Atto societario"}
+
 
 def _walk(parts):
     for part in parts or []:
@@ -99,8 +102,7 @@ def _find_or_create_folder(drive, name: str, parent_id: str | None = None) -> st
 
 
 def _archive_destination(drive, root_folder_id: str | None, client_name: str | None, category: str) -> tuple[str | None, str]:
-    root = root_folder_id
-    archive_root = _find_or_create_folder(drive, "FINANCE_V.1.1_ARCHIVIO", root)
+    archive_root = _find_or_create_folder(drive, "FINANCE_V.1.1_ARCHIVIO", root_folder_id)
     clients_root = _find_or_create_folder(drive, "CLIENTI", archive_root)
 
     if client_name:
@@ -119,6 +121,14 @@ def _archive_destination(drive, root_folder_id: str | None, client_name: str | N
 
 def _airtable_type(category: str) -> str:
     return AIRTABLE_TYPE_MAP.get(category, "Altro")
+
+
+def _document_sensitivity(document_type: str) -> str:
+    if document_type in HIGHLY_CONFIDENTIAL_TYPES:
+        return "Altamente riservato"
+    if document_type in CONFIDENTIAL_TYPES:
+        return "Riservato"
+    return "Interno"
 
 
 def _append_source(existing: str, source_email: str) -> str:
@@ -143,19 +153,23 @@ def sync_gmail_attachments(
     query: str = "has:attachment newer_than:1d -in:spam -in:trash",
     drive_folder_id: str | None = None,
     max_messages: int = 50,
+    profile: str | None = None,
 ) -> dict:
-    """Archive new Gmail attachments to Drive and index them in Airtable.
+    """Archive one Google profile's Gmail attachments to Drive and Airtable.
 
-    Each attachment is matched independently. Exact duplicates are blocked by
-    SHA-256, but the mailbox of provenance is preserved on the existing document.
-    Uncertain attachments go to DA_VERIFICARE and are not linked to any client.
+    The profile selects GOOGLE_OAUTH_TOKEN_JSON or a suffixed token such as
+    GOOGLE_OAUTH_TOKEN_JSON_STUDIO. Exact duplicates are blocked by SHA-256,
+    provenance is preserved across mailboxes and privacy metadata is written to
+    both Drive appProperties and Airtable.
     """
-    creds = load_credentials()
+    creds = load_credentials(profile)
     gmail = build("gmail", "v1", credentials=creds, cache_discovery=False)
     drive = build("drive", "v3", credentials=creds, cache_discovery=False)
     airtable = AirtableGold()
     source_email = gmail.users().getProfile(userId="me").execute().get("emailAddress", "Gmail")
     result = {
+        "profile": profile or "DEFAULT",
+        "source_email": source_email,
         "messages": 0,
         "attachments": 0,
         "uploaded": 0,
@@ -187,10 +201,7 @@ def sync_gmail_attachments(
             }
             source_key = f"GMAIL:{source_email.casefold()}:{msg['id']}"
 
-            if (
-                _already_indexed(airtable, "email", "Message ID sorgente", source_key)
-                or _already_indexed(airtable, "email", "Gmail Message ID", msg["id"])
-            ):
+            if _already_indexed(airtable, "email", "Message ID sorgente", source_key):
                 result["duplicates"] += 1
                 continue
 
@@ -229,6 +240,8 @@ def sync_gmail_attachments(
                     result["matched"] += 1
 
                 classification = classify_text(attachment_context)
+                document_type = _airtable_type(classification.category)
+                sensitivity = _document_sensitivity(document_type)
                 ext = os.path.splitext(filename)[1] or ".bin"
                 if confident_client:
                     classification.company_name = file_match.client_name or ""
@@ -246,26 +259,36 @@ def sync_gmail_attachments(
                     mimetype=part.get("mimeType") or "application/octet-stream",
                     resumable=False,
                 )
-                meta = {"name": proposed or filename, "parents": [destination_id]}
+                meta = {
+                    "name": proposed or filename,
+                    "parents": [destination_id],
+                    "appProperties": {
+                        "financeplusSensitivity": sensitivity,
+                        "financeplusDocumentType": document_type,
+                        "financeplusSource": "Gmail",
+                    },
+                }
                 saved = drive.files().create(
                     body=meta,
                     media_body=media,
-                    fields="id,webViewLink,name,parents",
+                    fields="id,webViewLink,name,parents,appProperties",
                 ).execute()
                 result["uploaded"] += 1
 
                 fields = {
                     "Documento": saved["name"],
-                    "Tipo Documento": _airtable_type(classification.category),
+                    "Tipo Documento": document_type,
                     "Nome Originale": filename,
                     "Nome IA Suggerito": saved["name"],
                     "Nome Definitivo": saved["name"],
                     "Origine": "Gmail",
                     "Caselle origine": source_email,
+                    "Casella sorgente": source_email,
                     "URL Drive": saved.get("webViewLink", ""),
                     "SHA-256": sha,
                     "Stato Verifica": "Da verificare",
                     "Percorso nel pacchetto": archive_path,
+                    "Sensibilità dati": sensitivity,
                 }
 
                 if confident_client:
@@ -286,6 +309,7 @@ def sync_gmail_attachments(
                 "Mittente": headers.get("from", ""),
                 "Gmail Message ID": msg["id"],
                 "Casella origine": source_email,
+                "Casella sorgente": source_email,
                 "Message ID sorgente": source_key,
                 "Sintesi IA": msg.get("snippet", ""),
                 "Allegati": "\n".join(attachment_names),

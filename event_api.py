@@ -12,8 +12,8 @@ from services.event_orchestrator import FinancePlusEventOrchestrator
 
 app = FastAPI(
     title="FinancePlus 360 AI Event API",
-    version="1.0.0",
-    description="Webhook/event ingress for Airtable, Gmail, Drive and FinancePlus automations.",
+    version="1.1.0",
+    description="Webhook/event ingress for Airtable, Gmail, Drive and FinancePlus automations with staged AI approvals.",
 )
 
 
@@ -41,6 +41,7 @@ def health() -> dict:
         "airtable_configured": bool(os.getenv("AIRTABLE_TOKEN")),
         "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
         "cdata_configured": bool(os.getenv("CDATA_USER") and os.getenv("CDATA_PAT")),
+        "ai_staging": os.getenv("FINANCEPLUS_AI_STAGING", "true").lower() not in {"0", "false", "no"},
         "ai_write_back": os.getenv("FINANCEPLUS_AI_WRITE_BACK", "false").lower() in {"1", "true", "yes"},
     }
 
