@@ -1,0 +1,1 @@
+Airtable/Gmail/Drive -> FinancePlus Event API -> Event Orchestrator -> Privacy Gate + Audit -> OpenAI Responses/CData -> Airtable Eventi AI / controlled write-back

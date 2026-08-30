@@ -10,6 +10,7 @@ TABLES = {
     "documenti": "tblWxkIGieQuW8Cuo",
     "email": "tblmOCSQfwc3VItpm",
     "analisi": "tblACV72ySC38jmvO",
+    "eventi": "tblt8Od6yT8pWpHNQ",
 }
 
 
