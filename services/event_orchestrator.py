@@ -14,6 +14,34 @@ ENTITY_TABLE = {
     "Documenti": "documenti",
     "Email": "email",
     "Analisi Creditizie": "analisi",
+    "Proposte AI": "proposte",
+}
+
+# Human-approved proposals can only write to explicitly allow-listed fields.
+PROPOSAL_WRITE_ALLOWLIST = {
+    "Pratiche": {
+        "Prossima azione",
+        "Alert e criticità",
+        "Documenti mancanti",
+    },
+    "Documenti": {
+        "Nome Definitivo",
+        "Sintesi IA",
+        "Stato Verifica",
+    },
+    "Email": {
+        "Sintesi IA",
+        "Priorità",
+        "Azione Richiesta",
+    },
+    "Clienti": {
+        "Note",
+    },
+    "Analisi Creditizie": {
+        "Punti di Forza",
+        "Criticità",
+        "Raccomandazione IA",
+    },
 }
 
 HIGHLY_CONFIDENTIAL_TYPES = {
@@ -35,6 +63,7 @@ class FinancePlusEventOrchestrator:
     def __init__(self, airtable: AirtableGold | None = None):
         self.airtable = airtable or AirtableGold()
         self.ai_write_back = os.getenv("FINANCEPLUS_AI_WRITE_BACK", "false").lower() in {"1", "true", "yes"}
+        self.ai_staging = os.getenv("FINANCEPLUS_AI_STAGING", "true").lower() not in {"0", "false", "no"}
 
     @staticmethod
     def _now() -> str:
@@ -79,6 +108,35 @@ class FinancePlusEventOrchestrator:
             return "Interno"
         return "Interno"
 
+    def _stage_proposal(
+        self,
+        *,
+        entity: str,
+        record_id: str,
+        field_name: str,
+        value: str,
+        correlation_id: str,
+        rationale: str,
+        sensitivity: str = "Interno",
+    ) -> dict:
+        proposal_id = f"prop_{uuid.uuid4().hex}"
+        return self.airtable.create_record(
+            "proposte",
+            {
+                "Proposta ID": proposal_id,
+                "Data e ora": self._now(),
+                "Entità": entity,
+                "Record ID": record_id,
+                "Campo destinazione": field_name,
+                "Valore proposto": (value or "")[:9000],
+                "Motivazione": (rationale or "")[:9000],
+                "Stato": "Da approvare",
+                "Sensibilità dati": sensitivity,
+                "Origine": "OpenAI",
+                "Correlation ID": correlation_id,
+            },
+        )
+
     def _handle_document(self, record_id: str, fields: Dict[str, Any]) -> tuple[str, str, str]:
         document_type = str(fields.get("Tipo Documento") or "")
         sensitivity = str(fields.get("Sensibilità dati") or "")
@@ -100,7 +158,7 @@ class FinancePlusEventOrchestrator:
             f"Documento classificato come {sensitivity}. Elaborazione AI consentita solo dai moduli esplicitamente abilitati.",
         )
 
-    def _handle_practice(self, record_id: str, fields: Dict[str, Any]) -> tuple[str, str, str]:
+    def _handle_practice(self, record_id: str, fields: Dict[str, Any], correlation_id: str) -> tuple[str, str, str]:
         documentation_status = str(fields.get("Stato documentazione") or "")
         if documentation_status != "Completa":
             return (
@@ -120,6 +178,22 @@ class FinancePlusEventOrchestrator:
                 f"Documentazione completa, ma analisi AI non eseguita: {type(exc).__name__}: {exc}",
             )
 
+        if self.ai_staging and recommendation:
+            proposal = self._stage_proposal(
+                entity="Pratiche",
+                record_id=record_id,
+                field_name="Prossima azione",
+                value=recommendation,
+                correlation_id=correlation_id,
+                rationale="Raccomandazione operativa generata dopo readiness-check con documentazione completa.",
+                sensitivity="Interno",
+            )
+            return (
+                "ai-staging",
+                "Completato",
+                f"Raccomandazione AI salvata in Proposte AI e in attesa di approvazione umana ({proposal.get('id', 'record creato')}).",
+            )
+
         if self.ai_write_back and recommendation:
             self.airtable.update_record("pratiche", record_id, {"Prossima azione": recommendation[:9000]})
             return ("ai-readiness", "Completato", "Raccomandazione AI generata e salvata in Prossima azione.")
@@ -128,6 +202,38 @@ class FinancePlusEventOrchestrator:
             "ai-readiness",
             "Completato",
             "Raccomandazione AI generata; write-back disattivato. Anteprima: " + recommendation[:1200],
+        )
+
+    def _handle_proposal(self, record_id: str, fields: Dict[str, Any]) -> tuple[str, str, str]:
+        status = str(fields.get("Stato") or "")
+        if status != "Approvata":
+            return (
+                "proposal-gate",
+                "Ignorato",
+                f"Proposta in stato {status or 'non valorizzato'}: nessuna modifica applicata.",
+            )
+
+        entity = str(fields.get("Entità") or "")
+        target_record_id = str(fields.get("Record ID") or "")
+        field_name = str(fields.get("Campo destinazione") or "")
+        value = str(fields.get("Valore proposto") or "")
+        target_table = ENTITY_TABLE.get(entity)
+        allowed_fields = PROPOSAL_WRITE_ALLOWLIST.get(entity, set())
+
+        if not target_table or entity == "Proposte AI" or field_name not in allowed_fields or not target_record_id:
+            self.airtable.update_record("proposte", record_id, {"Stato": "Errore"})
+            return (
+                "proposal-apply",
+                "Errore",
+                "Proposta non applicata: entità, record o campo destinazione non autorizzato.",
+            )
+
+        self.airtable.update_record(target_table, target_record_id, {field_name: value[:9000]})
+        self.airtable.update_record("proposte", record_id, {"Stato": "Applicata"})
+        return (
+            "proposal-apply",
+            "Completato",
+            f"Proposta approvata applicata a {entity}.{field_name} con allowlist di sicurezza.",
         )
 
     def process(
@@ -174,7 +280,9 @@ class FinancePlusEventOrchestrator:
             if entity == "Documenti":
                 action, status, detail = self._handle_document(record_id, fields)
             elif entity == "Pratiche":
-                action, status, detail = self._handle_practice(record_id, fields)
+                action, status, detail = self._handle_practice(record_id, fields, correlation_id)
+            elif entity == "Proposte AI":
+                action, status, detail = self._handle_proposal(record_id, fields)
             else:
                 action, status, detail = (
                     "audit-only",
