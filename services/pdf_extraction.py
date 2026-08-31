@@ -82,13 +82,15 @@ def extract_document_content(
     mime_type: str = "",
     sensitivity: str = "Interno",
     ai_policy: str = "Consentita",
+    allow_cloud: bool | None = None,
 ) -> ExtractionResult:
     """Extract document text without weakening FinancePlus privacy controls.
 
     PDFs are always eligible for local extraction. Adobe PDF-to-Markdown is an
-    optional quality layer and is only called when credentials are configured,
-    the privacy policy permits cloud processing and FINANCEPLUS_PDF_EXTRACTOR
-    is set to ``auto`` (default) or ``adobe``.
+    optional quality layer. Callers handling unclassified inbound documents
+    should first call this function with ``allow_cloud=False``, classify the
+    local result, then call it again with ``allow_cloud=True`` only if the
+    resulting privacy policy permits cloud processing.
     """
     lower_name = (filename or "").lower()
     is_pdf = lower_name.endswith(".pdf") or mime_type == "application/pdf"
@@ -113,9 +115,11 @@ def extract_document_content(
         os.getenv("PDF_SERVICES_CLIENT_ID", "").strip()
         and os.getenv("PDF_SERVICES_CLIENT_SECRET", "").strip()
     )
+    cloud_requested = True if allow_cloud is None else bool(allow_cloud)
 
     should_try_adobe = (
-        mode in {"auto", "adobe"}
+        cloud_requested
+        and mode in {"auto", "adobe"}
         and adobe_configured
         and _cloud_allowed(sensitivity, ai_policy)
     )
@@ -134,7 +138,7 @@ def extract_document_content(
             if mode == "adobe" and not local_text:
                 return ExtractionResult(method="adobe_failed", warnings=warnings)
 
-    if mode == "adobe" and not _cloud_allowed(sensitivity, ai_policy):
+    if cloud_requested and mode == "adobe" and not _cloud_allowed(sensitivity, ai_policy):
         warnings.append("Adobe bloccato dalla policy privacy FinancePlus; usata estrazione locale")
 
     return ExtractionResult(
