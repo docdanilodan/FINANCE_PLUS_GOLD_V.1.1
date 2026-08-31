@@ -131,6 +131,14 @@ def _document_sensitivity(document_type: str) -> str:
     return "Interno"
 
 
+def _document_ai_policy(sensitivity: str, protection: str = "Standard") -> str:
+    if protection == "CSE" or sensitivity == "Altamente riservato":
+        return "Bloccata"
+    if sensitivity == "Riservato":
+        return "Solo con approvazione"
+    return "Consentita"
+
+
 def _append_source(existing: str, source_email: str) -> str:
     sources = [x.strip() for x in str(existing or "").replace(";", "\n").splitlines() if x.strip()]
     if source_email.casefold() not in {x.casefold() for x in sources}:
@@ -242,6 +250,8 @@ def sync_gmail_attachments(
                 classification = classify_text(attachment_context)
                 document_type = _airtable_type(classification.category)
                 sensitivity = _document_sensitivity(document_type)
+                protection = "Standard"
+                ai_policy = _document_ai_policy(sensitivity, protection)
                 ext = os.path.splitext(filename)[1] or ".bin"
                 if confident_client:
                     classification.company_name = file_match.client_name or ""
@@ -266,6 +276,8 @@ def sync_gmail_attachments(
                         "financeplusSensitivity": sensitivity,
                         "financeplusDocumentType": document_type,
                         "financeplusSource": "Gmail",
+                        "financeplusDriveProtection": protection,
+                        "financeplusAiPolicy": ai_policy,
                     },
                 }
                 saved = drive.files().create(
@@ -289,6 +301,8 @@ def sync_gmail_attachments(
                     "Stato Verifica": "Da verificare",
                     "Percorso nel pacchetto": archive_path,
                     "Sensibilità dati": sensitivity,
+                    "Protezione Drive": protection,
+                    "Policy elaborazione AI": ai_policy,
                 }
 
                 if confident_client:
