@@ -29,11 +29,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest
 
-      - name: Compile unified app
+      - name: Compile unified app and integrations
         run: |
-          python -m py_compile master_app.py streamlit_app.py app.py
+          python -m py_compile master_app.py streamlit_app.py app.py event_api.py
           python -m py_compile analytics_engine.py document_ai.py
-          python -m py_compile modules/*.py services/*.py FinancePlus_Airtable/client_fascicolo.py
+          python -m py_compile modules/*.py services/*.py scripts/*.py FinancePlus_Airtable/client_fascicolo.py
+
+      - name: Reject deprecated OpenAI Assistants API usage
+        shell: bash
+        run: |
+          if grep -R -nE 'beta\.assistants|threads\.runs|/v1/assistants|/v1/threads' \
+            --include='*.py' --exclude-dir=.git .; then
+            echo "Deprecated Assistants API reference found. FinancePlus must use the Responses API."
+            exit 1
+          fi
 
       - name: Run tests
         id: pytest

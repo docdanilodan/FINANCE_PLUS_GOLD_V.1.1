@@ -52,9 +52,30 @@ jobs:
             --arg correlation_id "github-${RUN_ID}-${RUN_ATTEMPT}" \
             '{external_id:$external_id,event_type:$event_type,detail:$detail,correlation_id:$correlation_id}')
 
-          curl --fail --show-error --silent \
-            -X POST "$FINANCEPLUS_EVENT_URL" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $oidc_token" \
-            --data "$payload"
+          response_file=$(mktemp)
+          http_code="000"
+          curl_code=1
+          for attempt in 1 2 3; do
+            set +e
+            http_code=$(curl --show-error --silent \
+              --connect-timeout 10 --max-time 50 \
+              -o "$response_file" -w "%{http_code}" \
+              -X POST "$FINANCEPLUS_EVENT_URL" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $oidc_token" \
+              --data "$payload")
+            curl_code=$?
+            set -e
+            if [ "$curl_code" -eq 0 ] && [[ "$http_code" =~ ^2 ]]; then
+              cat "$response_file"
+              echo
+              exit 0
+            fi
+            echo "FinancePlus event delivery attempt ${attempt} failed (curl=${curl_code}, http=${http_code})."
+            sleep $((attempt * 2))
+          done
+
+          echo "::warning::FinancePlus Event API unavailable after retries (curl=${curl_code}, http=${http_code}). Telemetry failure does not invalidate the pull request."
+          cat "$response_file" || true
           echo
+          exit 0

@@ -9,13 +9,17 @@ from jwt import PyJWKClient
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from services.airtable_mcp_policy import evaluate_airtable_mcp_action
 from services.event_orchestrator import FinancePlusEventOrchestrator
 
 
 app = FastAPI(
     title="FinancePlus 360 AI Event API",
-    version="1.3.0",
-    description="Webhook/event ingress for Airtable, Gmail, GitHub, Work and Drive with staged AI approvals, CSE privacy and GitHub OIDC.",
+    version="1.4.1",
+    description=(
+        "Webhook/event ingress for Airtable, Gmail, GitHub, Work and Drive with staged AI approvals, "
+        "CSE privacy, GitHub OIDC, Drive classification and governed Airtable MCP actions."
+    ),
 )
 
 GITHUB_OIDC_ISSUER = "https://token.actions.githubusercontent.com"
@@ -44,6 +48,12 @@ class ExternalEventPayload(BaseModel):
 
 class WorkEventPayload(ExternalEventPayload):
     source_platform: str = Field(default="Gmail")
+
+
+class AirtableMcpPolicyPayload(BaseModel):
+    action: str
+    sensitivity: str = Field(default="Interno")
+    source: str = Field(default="agent")
 
 
 def _secret_is_valid(provided: str | None) -> bool:
@@ -93,14 +103,22 @@ def _authorize_external(
 
 
 def _external(source: str, payload: ExternalEventPayload) -> dict:
-    orchestrator = FinancePlusEventOrchestrator()
-    return orchestrator.process_external_event(
-        source=source,
-        event_type=payload.event_type,
-        external_id=payload.external_id,
-        detail=payload.detail or "",
-        correlation_id=payload.correlation_id or "",
-    )
+    try:
+        orchestrator = FinancePlusEventOrchestrator()
+        return orchestrator.process_external_event(
+            source=source,
+            event_type=payload.event_type,
+            external_id=payload.external_id,
+            detail=payload.detail or "",
+            correlation_id=payload.correlation_id or "",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Persistenza eventi temporaneamente non disponibile ({type(exc).__name__})",
+        ) from exc
 
 
 @app.get("/health")
@@ -111,12 +129,32 @@ def health() -> dict:
         "airtable_configured": bool(os.getenv("AIRTABLE_TOKEN")),
         "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
         "cdata_configured": bool(os.getenv("CDATA_USER") and os.getenv("CDATA_PAT")),
+        "adobe_pdf_services_configured": bool(
+            os.getenv("PDF_SERVICES_CLIENT_ID") and os.getenv("PDF_SERVICES_CLIENT_SECRET")
+        ),
+        "drive_label_mapping_configured": bool(os.getenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON")),
         "ai_staging": os.getenv("FINANCEPLUS_AI_STAGING", "true").lower() not in {"0", "false", "no"},
         "ai_write_back": os.getenv("FINANCEPLUS_AI_WRITE_BACK", "false").lower() in {"1", "true", "yes"},
         "external_webhooks": True,
         "github_oidc": True,
         "drive_cse_policy": True,
+        "drive_label_policy": True,
+        "airtable_mcp_governance": True,
+        "responses_api_only": True,
     }
+
+
+@app.post("/policy/airtable-mcp")
+def airtable_mcp_policy(
+    payload: AirtableMcpPolicyPayload,
+    x_financeplus_webhook_secret: str | None = Header(default=None),
+) -> dict:
+    _authorize(x_financeplus_webhook_secret)
+    return evaluate_airtable_mcp_action(
+        action=payload.action,
+        sensitivity=payload.sensitivity,
+        source=payload.source,
+    ).to_dict()
 
 
 @app.post("/events")
