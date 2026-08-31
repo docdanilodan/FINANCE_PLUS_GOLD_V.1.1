@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   notify-financeplus:
@@ -14,7 +15,6 @@ jobs:
     steps:
       - name: Send GitHub event to FinancePlus Event API
         env:
-          FINANCEPLUS_WEBHOOK_SECRET: ${{ secrets.FINANCEPLUS_WEBHOOK_SECRET }}
           FINANCEPLUS_EVENT_URL: https://financeplus-events-v2.onrender.com/events/github
           EVENT_NAME: ${{ github.event_name }}
           EVENT_ACTION: ${{ github.event.action }}
@@ -26,10 +26,10 @@ jobs:
           RUN_ATTEMPT: ${{ github.run_attempt }}
         shell: bash
         run: |
-          if [ -z "$FINANCEPLUS_WEBHOOK_SECRET" ]; then
-            echo "FINANCEPLUS_WEBHOOK_SECRET not configured: event bridge skipped"
-            exit 0
-          fi
+          oidc_token=$(curl --fail --show-error --silent \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=financeplus-events-v2" | jq -r '.value')
+          test -n "$oidc_token" && test "$oidc_token" != "null"
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             event_type="github.bridge.test"
@@ -48,15 +48,13 @@ jobs:
           payload=$(jq -n \
             --arg event_type "$event_type" \
             --arg external_id "$external_id" \
-            --arg title "$title" \
-            --arg url "$url" \
-            --arg detail "$detail" \
+            --arg detail "$detail URL: $url" \
             --arg correlation_id "github-${RUN_ID}-${RUN_ATTEMPT}" \
-            '{source:"GitHub",event_type:$event_type,external_id:$external_id,title:$title,url:$url,detail:$detail,correlation_id:$correlation_id}')
+            '{external_id:$external_id,event_type:$event_type,detail:$detail,correlation_id:$correlation_id}')
 
           curl --fail --show-error --silent \
             -X POST "$FINANCEPLUS_EVENT_URL" \
             -H "Content-Type: application/json" \
-            -H "X-FinancePlus-Webhook-Secret: $FINANCEPLUS_WEBHOOK_SECRET" \
+            -H "Authorization: Bearer $oidc_token" \
             --data "$payload"
           echo
