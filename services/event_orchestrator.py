@@ -58,6 +58,15 @@ CONFIDENTIAL_TYPES = {
     "Atto societario",
 }
 
+AIRTABLE_ORIGINS = {
+    "Airtable",
+    "Gmail",
+    "Google Drive",
+    "CData",
+    "OpenAI",
+    "FinancePlus",
+}
+
 
 class FinancePlusEventOrchestrator:
     def __init__(self, airtable: AirtableGold | None = None):
@@ -87,7 +96,8 @@ class FinancePlusEventOrchestrator:
             {
                 "Evento ID": event_id,
                 "Data e ora": self._now(),
-                "Origine": source if source in {"Airtable", "Gmail", "Google Drive", "CData", "OpenAI", "FinancePlus"} else "FinancePlus",
+                "Origine": source if source in AIRTABLE_ORIGINS else "FinancePlus",
+                "Sorgente tecnica": source,
                 "Tipo evento": event_type,
                 "Entità": entity,
                 "Record ID": record_id,
@@ -107,6 +117,14 @@ class FinancePlusEventOrchestrator:
         if document_type in {"Visura camerale", "DURC", "Preventivo"}:
             return "Interno"
         return "Interno"
+
+    @staticmethod
+    def _document_ai_policy(sensitivity: str, drive_protection: str = "Standard") -> str:
+        if drive_protection == "CSE" or sensitivity == "Altamente riservato":
+            return "Bloccata"
+        if sensitivity == "Riservato":
+            return "Solo con approvazione"
+        return "Consentita"
 
     def _stage_proposal(
         self,
@@ -140,10 +158,28 @@ class FinancePlusEventOrchestrator:
     def _handle_document(self, record_id: str, fields: Dict[str, Any]) -> tuple[str, str, str]:
         document_type = str(fields.get("Tipo Documento") or "")
         sensitivity = str(fields.get("Sensibilità dati") or "")
+        protection = str(fields.get("Protezione Drive") or "Standard")
 
+        updates: Dict[str, Any] = {}
         if not sensitivity:
             sensitivity = self._document_sensitivity(document_type)
-            self.airtable.update_record("documenti", record_id, {"Sensibilità dati": sensitivity})
+            updates["Sensibilità dati"] = sensitivity
+        if not fields.get("Protezione Drive"):
+            updates["Protezione Drive"] = "Standard"
+
+        ai_policy = self._document_ai_policy(sensitivity, protection)
+        if str(fields.get("Policy elaborazione AI") or "") != ai_policy:
+            updates["Policy elaborazione AI"] = ai_policy
+
+        if updates:
+            self.airtable.update_record("documenti", record_id, updates)
+
+        if protection == "CSE":
+            return (
+                "privacy-gate-cse",
+                "Ignorato",
+                "Documento protetto con Google Drive Client-Side Encryption: elaborazione AI automatica bloccata.",
+            )
 
         if sensitivity == "Altamente riservato":
             return (
@@ -152,10 +188,17 @@ class FinancePlusEventOrchestrator:
                 "Documento classificato Altamente riservato: nessun invio automatico a servizi AI esterni.",
             )
 
+        if ai_policy == "Solo con approvazione":
+            return (
+                "classificazione-documento",
+                "Completato",
+                "Documento Riservato: elaborazione AI possibile solo dopo approvazione esplicita.",
+            )
+
         return (
             "classificazione-documento",
             "Completato",
-            f"Documento classificato come {sensitivity}. Elaborazione AI consentita solo dai moduli esplicitamente abilitati.",
+            "Documento Interno/Standard: elaborazione AI consentita dai moduli esplicitamente abilitati.",
         )
 
     def _handle_practice(self, record_id: str, fields: Dict[str, Any], correlation_id: str) -> tuple[str, str, str]:
@@ -235,6 +278,37 @@ class FinancePlusEventOrchestrator:
             "Completato",
             f"Proposta approvata applicata a {entity}.{field_name} con allowlist di sicurezza.",
         )
+
+    def process_external_event(
+        self,
+        *,
+        source: str,
+        event_type: str,
+        external_id: str,
+        detail: str = "",
+        correlation_id: str = "",
+    ) -> Dict[str, Any]:
+        event_id = f"evt_{uuid.uuid4().hex}"
+        correlation_id = correlation_id or uuid.uuid4().hex
+        external_id = (external_id or "unknown")[:500]
+        self._audit(
+            event_id=event_id,
+            source=source,
+            event_type=event_type or "external.event",
+            entity="Evento esterno",
+            record_id=external_id,
+            action="external-event",
+            status="Completato",
+            detail=(detail or "")[:9000],
+            correlation_id=correlation_id,
+        )
+        return {
+            "event_id": event_id,
+            "correlation_id": correlation_id,
+            "status": "Completato",
+            "action": "external-event",
+            "source": source,
+        }
 
     def process(
         self,
