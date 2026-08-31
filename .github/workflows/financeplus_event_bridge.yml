@@ -1,0 +1,62 @@
+name: FinancePlus GitHub event bridge
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notify-financeplus:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send GitHub event to FinancePlus Event API
+        env:
+          FINANCEPLUS_WEBHOOK_SECRET: ${{ secrets.FINANCEPLUS_WEBHOOK_SECRET }}
+          FINANCEPLUS_EVENT_URL: https://financeplus-events-v2.onrender.com/events/github
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        shell: bash
+        run: |
+          if [ -z "$FINANCEPLUS_WEBHOOK_SECRET" ]; then
+            echo "FINANCEPLUS_WEBHOOK_SECRET not configured: event bridge skipped"
+            exit 0
+          fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            event_type="github.bridge.test"
+            external_id="workflow-${RUN_ID}-${RUN_ATTEMPT}"
+            title="FinancePlus GitHub bridge test"
+            url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}"
+            detail="Manual GitHub event bridge test."
+          else
+            event_type="github.pull_request.${EVENT_ACTION}"
+            external_id="${REPOSITORY}#${PR_NUMBER}-${EVENT_ACTION}"
+            title="${PR_TITLE:-Pull request #${PR_NUMBER}}"
+            url="$PR_URL"
+            detail="GitHub pull request event: ${EVENT_ACTION} on ${REPOSITORY}."
+          fi
+
+          payload=$(jq -n \
+            --arg event_type "$event_type" \
+            --arg external_id "$external_id" \
+            --arg title "$title" \
+            --arg url "$url" \
+            --arg detail "$detail" \
+            --arg correlation_id "github-${RUN_ID}-${RUN_ATTEMPT}" \
+            '{source:"GitHub",event_type:$event_type,external_id:$external_id,title:$title,url:$url,detail:$detail,correlation_id:$correlation_id}')
+
+          curl --fail --show-error --silent \
+            -X POST "$FINANCEPLUS_EVENT_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-FinancePlus-Webhook-Secret: $FINANCEPLUS_WEBHOOK_SECRET" \
+            --data "$payload"
+          echo
