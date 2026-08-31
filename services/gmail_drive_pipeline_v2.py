@@ -14,7 +14,7 @@ from services.client_practice_matcher import match_client_practice
 from services.drive_classification import ai_policy_for_sensitivity, resolve_drive_classification
 from services.google_auth import load_credentials
 from services.pdf_extraction import extract_document_content
-from services import gmail_drive_pipeline as legacy
+from services import gmail_drive_pipeline_legacy as legacy
 
 
 def _classify_with_local_preflight(raw: bytes, filename: str, mime_type: str, context: str):
@@ -218,8 +218,6 @@ def sync_gmail_attachments(
                 ).execute()
                 result["uploaded"] += 1
 
-                # Google AI Classification / Drive Labels can only make the
-                # FinancePlus policy stricter. Labels are never modified here.
                 drive_decision = resolve_drive_classification(
                     drive=drive,
                     file_id=saved["id"],
@@ -229,19 +227,17 @@ def sync_gmail_attachments(
                     sensitivity = drive_decision.sensitivity
                     ai_policy = ai_policy_for_sensitivity(sensitivity, protection)
                     result["drive_label_overrides"] += 1
+                    props = dict(saved.get("appProperties", {}) or meta["appProperties"])
+                    props.update(
+                        {
+                            "financeplusSensitivity": sensitivity,
+                            "financeplusAiPolicy": ai_policy,
+                            "financeplusClassificationSource": drive_decision.source,
+                        }
+                    )
                     drive.files().update(
                         fileId=saved["id"],
-                        body={
-                            "appProperties": {
-                                "financeplusSensitivity": sensitivity,
-                                "financeplusDocumentType": document_type,
-                                "financeplusSource": "Gmail",
-                                "financeplusDriveProtection": protection,
-                                "financeplusAiPolicy": ai_policy,
-                                "financeplusExtractionMethod": extraction.method[:120],
-                                "financeplusClassificationSource": drive_decision.source,
-                            }
-                        },
+                        body={"appProperties": props},
                         fields="id,appProperties",
                     ).execute()
 
