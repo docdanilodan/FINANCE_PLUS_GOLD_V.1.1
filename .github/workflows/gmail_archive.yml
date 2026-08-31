@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   archive:
@@ -42,25 +43,24 @@ jobs:
 
       - name: Send Gmail event to FinancePlus Event API
         env:
-          FINANCEPLUS_WEBHOOK_SECRET: ${{ secrets.FINANCEPLUS_WEBHOOK_SECRET }}
           FINANCEPLUS_EVENT_URL: https://financeplus-events-v2.onrender.com/events/gmail
         shell: bash
         run: |
-          if [ -z "$FINANCEPLUS_WEBHOOK_SECRET" ]; then
-            echo "FINANCEPLUS_WEBHOOK_SECRET not configured: event bridge skipped"
-            exit 0
-          fi
+          oidc_token=$(curl --fail --show-error --silent \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=financeplus-events-v2" | jq -r '.value')
+          test -n "$oidc_token" && test "$oidc_token" != "null"
+
           payload=$(jq -n \
             --arg event_type "gmail.archive.completed" \
             --arg external_id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
-            --arg title "FinancePlus Gmail archive completed" \
-            --arg url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-            --arg detail "Gmail attachment synchronization completed for configured Google profiles." \
+            --arg detail "Gmail attachment synchronization completed for configured Google profiles. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
             --arg correlation_id "gmail-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
-            '{source:"Gmail",event_type:$event_type,external_id:$external_id,title:$title,url:$url,detail:$detail,correlation_id:$correlation_id}')
+            '{external_id:$external_id,event_type:$event_type,detail:$detail,correlation_id:$correlation_id}')
+
           curl --fail --show-error --silent \
             -X POST "$FINANCEPLUS_EVENT_URL" \
             -H "Content-Type: application/json" \
-            -H "X-FinancePlus-Webhook-Secret: $FINANCEPLUS_WEBHOOK_SECRET" \
+            -H "Authorization: Bearer $oidc_token" \
             --data "$payload"
           echo
