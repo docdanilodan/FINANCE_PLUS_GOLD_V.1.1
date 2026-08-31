@@ -15,7 +15,7 @@ from services.event_orchestrator import FinancePlusEventOrchestrator
 
 app = FastAPI(
     title="FinancePlus 360 AI Event API",
-    version="1.4.0",
+    version="1.4.1",
     description=(
         "Webhook/event ingress for Airtable, Gmail, GitHub, Work and Drive with staged AI approvals, "
         "CSE privacy, GitHub OIDC, Drive classification and governed Airtable MCP actions."
@@ -103,14 +103,22 @@ def _authorize_external(
 
 
 def _external(source: str, payload: ExternalEventPayload) -> dict:
-    orchestrator = FinancePlusEventOrchestrator()
-    return orchestrator.process_external_event(
-        source=source,
-        event_type=payload.event_type,
-        external_id=payload.external_id,
-        detail=payload.detail or "",
-        correlation_id=payload.correlation_id or "",
-    )
+    try:
+        orchestrator = FinancePlusEventOrchestrator()
+        return orchestrator.process_external_event(
+            source=source,
+            event_type=payload.event_type,
+            external_id=payload.external_id,
+            detail=payload.detail or "",
+            correlation_id=payload.correlation_id or "",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Persistenza eventi temporaneamente non disponibile ({type(exc).__name__})",
+        ) from exc
 
 
 @app.get("/health")
