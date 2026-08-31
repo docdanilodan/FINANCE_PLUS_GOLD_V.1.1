@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from document_ai import DocumentResult
+from services import gmail_drive_pipeline_v2 as gmail_v2
 from services.airtable_mcp_policy import evaluate_airtable_mcp_action
 from services.drive_classification import resolve_drive_classification
-from services.pdf_extraction import _cloud_allowed, extract_document_content
+from services.pdf_extraction import ExtractionResult, _cloud_allowed, extract_document_content
 
 
 class _Execute:
@@ -108,3 +110,60 @@ def test_local_text_extraction_does_not_use_cloud(monkeypatch):
     assert result.text == "bilancio 2025"
     assert result.method == "local_text"
     assert result.cloud_used is False
+
+
+def test_unreadable_pdf_preflight_fails_closed():
+    local = ExtractionResult(text="", method="none")
+    classification = DocumentResult(category="Bilancio d'esercizio", confidence=0.95)
+    assert gmail_v2._local_preflight_is_classifiable(
+        local,
+        classification,
+        "allegato.pdf",
+        "application/pdf",
+    ) is False
+
+
+def test_short_pdf_preflight_fails_closed_even_with_context_classification():
+    local = ExtractionResult(text="saldo", method="local_pypdf")
+    classification = DocumentResult(category="Estratto conto", confidence=0.95)
+    assert gmail_v2._local_preflight_is_classifiable(
+        local,
+        classification,
+        "documento.pdf",
+        "application/pdf",
+    ) is False
+
+
+def test_meaningful_local_pdf_preflight_can_enable_optional_cloud_layer():
+    local = ExtractionResult(
+        text=("stato patrimoniale conto economico bilancio esercizio ricavi costi patrimonio " * 5),
+        method="local_pypdf",
+    )
+    classification = DocumentResult(category="Bilancio d'esercizio", confidence=0.80)
+    assert gmail_v2._local_preflight_is_classifiable(
+        local,
+        classification,
+        "bilancio.pdf",
+        "application/pdf",
+    ) is True
+
+
+def test_adobe_not_called_when_local_pdf_preflight_is_not_classifiable(monkeypatch):
+    local = ExtractionResult(text="", method="none")
+
+    def _must_not_be_called(**kwargs):
+        raise AssertionError("cloud extractor must not be called")
+
+    monkeypatch.setattr(gmail_v2, "extract_document_content", _must_not_be_called)
+    classification, returned = gmail_v2._maybe_enhance_with_adobe(
+        raw=b"pdf",
+        filename="scansione.pdf",
+        mime_type="application/pdf",
+        context="mail generica",
+        sensitivity="Interno",
+        ai_policy="Consentita",
+        local_result=local,
+        preflight_classifiable=False,
+    )
+    assert classification is None
+    assert returned is local
