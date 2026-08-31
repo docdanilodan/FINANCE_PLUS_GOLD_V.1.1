@@ -17,6 +17,35 @@ from services.pdf_extraction import extract_document_content
 from services import gmail_drive_pipeline_legacy as legacy
 
 
+MIN_LOCAL_PREFLIGHT_ALNUM = 120
+MIN_LOCAL_PREFLIGHT_CONFIDENCE = 0.55
+
+
+def _is_pdf(filename: str, mime_type: str) -> bool:
+    return (filename or "").lower().endswith(".pdf") or mime_type == "application/pdf"
+
+
+def _local_preflight_is_classifiable(local_result, classification, filename: str, mime_type: str) -> bool:
+    """Require evidence from the PDF itself before any optional cloud extraction.
+
+    Filename, email subject and snippet are useful routing context but are not
+    sufficient to establish privacy classification for an unreadable/scanned
+    PDF. A PDF can be sent to Adobe only after pypdf produced a meaningful body
+    and the local classifier recognized a document category with adequate
+    confidence. Otherwise FinancePlus keeps the attachment local and blocked
+    pending human review.
+    """
+    if not _is_pdf(filename, mime_type):
+        return True
+    local_text = str(getattr(local_result, "text", "") or "")
+    alnum_count = sum(1 for char in local_text if char.isalnum())
+    return bool(
+        alnum_count >= MIN_LOCAL_PREFLIGHT_ALNUM
+        and getattr(classification, "category", "Altro") != "Altro"
+        and float(getattr(classification, "confidence", 0.0) or 0.0) >= MIN_LOCAL_PREFLIGHT_CONFIDENCE
+    )
+
+
 def _classify_with_local_preflight(raw: bytes, filename: str, mime_type: str, context: str):
     """Classify inbound content locally before any optional cloud extraction."""
     local = extract_document_content(
@@ -32,7 +61,31 @@ def _classify_with_local_preflight(raw: bytes, filename: str, mime_type: str, co
     document_type = legacy._airtable_type(classification.category)
     sensitivity = legacy._document_sensitivity(document_type)
     ai_policy = legacy._document_ai_policy(sensitivity, "Standard")
-    return classification, document_type, sensitivity, ai_policy, local
+    preflight_classifiable = _local_preflight_is_classifiable(
+        local,
+        classification,
+        filename,
+        mime_type,
+    )
+
+    if _is_pdf(filename, mime_type) and not preflight_classifiable:
+        # Fail closed: a scanned/encrypted/unreadable PDF cannot be proven safe
+        # from filename/email metadata alone. Keep it local until a reviewer has
+        # explicitly classified it.
+        sensitivity = "Altamente riservato"
+        ai_policy = "Bloccata"
+        local.warnings.append(
+            "Preflight PDF locale insufficiente: elaborazione cloud bloccata fino a revisione umana"
+        )
+
+    return (
+        classification,
+        document_type,
+        sensitivity,
+        ai_policy,
+        local,
+        preflight_classifiable,
+    )
 
 
 def _maybe_enhance_with_adobe(
@@ -43,7 +96,11 @@ def _maybe_enhance_with_adobe(
     sensitivity: str,
     ai_policy: str,
     local_result,
+    preflight_classifiable: bool,
 ):
+    if not preflight_classifiable:
+        return None, local_result
+
     enhanced = extract_document_content(
         raw=raw,
         filename=filename,
@@ -69,9 +126,10 @@ def sync_gmail_attachments(
     Differences from the legacy pipeline:
     - extracts actual PDF text before classification;
     - performs local privacy preflight before optional Adobe PDF-to-Markdown;
+    - unreadable/scanned PDFs fail closed and stay local pending review;
     - reads Google Drive labels and raises sensitivity when a configured label
       requires a stricter policy;
-    - records the extraction method in Drive appProperties for auditability.
+    - records extraction/preflight state in Drive appProperties for auditability.
     """
     creds = load_credentials(profile)
     gmail = build("gmail", "v1", credentials=creds, cache_discovery=False)
@@ -91,6 +149,7 @@ def sync_gmail_attachments(
         "archived_by_client": 0,
         "pending_review": 0,
         "adobe_markdown": 0,
+        "cloud_preflight_blocked": 0,
         "drive_label_overrides": 0,
         "extraction_warnings": 0,
         "errors": [],
@@ -155,7 +214,14 @@ def sync_gmail_attachments(
                     result["matched"] += 1
 
                 mime_type = part.get("mimeType") or "application/octet-stream"
-                classification, document_type, sensitivity, ai_policy, extraction = _classify_with_local_preflight(
+                (
+                    classification,
+                    document_type,
+                    sensitivity,
+                    ai_policy,
+                    extraction,
+                    preflight_classifiable,
+                ) = _classify_with_local_preflight(
                     raw=raw,
                     filename=filename,
                     mime_type=mime_type,
@@ -163,6 +229,8 @@ def sync_gmail_attachments(
                 )
                 if extraction.warnings:
                     result["extraction_warnings"] += len(extraction.warnings)
+                if _is_pdf(filename, mime_type) and not preflight_classifiable:
+                    result["cloud_preflight_blocked"] += 1
 
                 enhanced_classification, enhanced = _maybe_enhance_with_adobe(
                     raw=raw,
@@ -172,6 +240,7 @@ def sync_gmail_attachments(
                     sensitivity=sensitivity,
                     ai_policy=ai_policy,
                     local_result=extraction,
+                    preflight_classifiable=preflight_classifiable,
                 )
                 if enhanced_classification is not None:
                     classification = enhanced_classification
@@ -199,6 +268,7 @@ def sync_gmail_attachments(
                     mimetype=mime_type,
                     resumable=False,
                 )
+                preflight_state = "classifiable" if preflight_classifiable else "manual-review"
                 meta = {
                     "name": proposed or filename,
                     "parents": [destination_id],
@@ -209,6 +279,7 @@ def sync_gmail_attachments(
                         "financeplusDriveProtection": protection,
                         "financeplusAiPolicy": ai_policy,
                         "financeplusExtractionMethod": extraction.method[:120],
+                        "financeplusLocalPreflight": preflight_state,
                     },
                 }
                 saved = drive.files().create(
@@ -263,7 +334,11 @@ def sync_gmail_attachments(
                     fields["Cliente"] = file_match.client_name or ""
                     fields["Cliente collegato"] = [file_match.client_id]
                     result["archived_by_client"] += 1
-                else:
+
+                requires_manual_review = (not confident_client) or (
+                    _is_pdf(filename, mime_type) and not preflight_classifiable
+                )
+                if requires_manual_review:
                     result["pending_review"] += 1
 
                 if file_match.practice_id and confident_client:
