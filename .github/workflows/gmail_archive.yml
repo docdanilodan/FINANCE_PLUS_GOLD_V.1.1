@@ -39,3 +39,28 @@ jobs:
           FINANCEPLUS_GMAIL_QUERY: "has:attachment newer_than:2d -in:spam -in:trash"
           FINANCEPLUS_MAX_MESSAGES: "100"
         run: python scripts/sync_gmail_archive.py
+
+      - name: Send Gmail event to FinancePlus Event API
+        env:
+          FINANCEPLUS_WEBHOOK_SECRET: ${{ secrets.FINANCEPLUS_WEBHOOK_SECRET }}
+          FINANCEPLUS_EVENT_URL: https://financeplus-events-v2.onrender.com/events/gmail
+        shell: bash
+        run: |
+          if [ -z "$FINANCEPLUS_WEBHOOK_SECRET" ]; then
+            echo "FINANCEPLUS_WEBHOOK_SECRET not configured: event bridge skipped"
+            exit 0
+          fi
+          payload=$(jq -n \
+            --arg event_type "gmail.archive.completed" \
+            --arg external_id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --arg title "FinancePlus Gmail archive completed" \
+            --arg url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --arg detail "Gmail attachment synchronization completed for configured Google profiles." \
+            --arg correlation_id "gmail-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            '{source:"Gmail",event_type:$event_type,external_id:$external_id,title:$title,url:$url,detail:$detail,correlation_id:$correlation_id}')
+          curl --fail --show-error --silent \
+            -X POST "$FINANCEPLUS_EVENT_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-FinancePlus-Webhook-Secret: $FINANCEPLUS_WEBHOOK_SECRET" \
+            --data "$payload"
+          echo
