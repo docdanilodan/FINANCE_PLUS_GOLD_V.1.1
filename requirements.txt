@@ -11,3 +11,4 @@ google-auth>=2.34,<3
 google-auth-httplib2>=0.2,<1
 fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
+PyJWT[crypto]>=2.10,<3
