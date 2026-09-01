@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from document_ai import DocumentResult
+from scripts import sync_drive_classification as drive_sync
 from services import gmail_drive_pipeline_v2 as gmail_v2
 from services.airtable_mcp_policy import evaluate_airtable_mcp_action
 from services.drive_classification import resolve_drive_classification
@@ -30,6 +31,26 @@ class _Drive:
 
     def files(self):
         return self._files
+
+
+def test_drive_sync_strict_mode_fails_when_label_map_is_missing(monkeypatch):
+    monkeypatch.setenv("FINANCEPLUS_DRIVE_SYNC_STRICT", "true")
+    monkeypatch.delenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON", raising=False)
+    assert drive_sync.main() == 1
+
+
+def test_drive_sync_non_strict_mode_keeps_local_skip_behaviour(monkeypatch):
+    monkeypatch.delenv("FINANCEPLUS_DRIVE_SYNC_STRICT", raising=False)
+    monkeypatch.delenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON", raising=False)
+    assert drive_sync.main() == 0
+
+
+def test_drive_sync_strict_mode_fails_for_missing_profile_token(monkeypatch):
+    monkeypatch.setenv("FINANCEPLUS_DRIVE_SYNC_STRICT", "true")
+    monkeypatch.setenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON", '{"choice-secret":"Altamente riservato"}')
+    monkeypatch.setenv("FINANCEPLUS_GOOGLE_PROFILES", "STUDIO")
+    monkeypatch.delenv("GOOGLE_OAUTH_TOKEN_JSON_STUDIO", raising=False)
+    assert drive_sync.main() == 1
 
 
 def test_airtable_mcp_reads_allowed(monkeypatch):
