@@ -1,5 +1,5 @@
-pandas>=2.0
-openpyxl>=3.1
-pypdf>=5.0
-reportlab>=4.0
-pyinstaller>=6.0
+pypdf>=6.0,<7
+reportlab>=4.0,<5
+requests>=2.31,<3
+google-auth>=2.30,<3
+google-api-python-client>=2.150,<3
