@@ -14,6 +14,15 @@ from services.google_auth import discover_google_profiles, load_credentials, tok
 RANK = {"Interno": 1, "Riservato": 2, "Altamente riservato": 3}
 
 
+def _strict_mode() -> bool:
+    return os.getenv("FINANCEPLUS_DRIVE_SYNC_STRICT", "").strip().casefold() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def _reconcile_profile(profile: str, airtable: AirtableGold | None) -> dict:
     creds = load_credentials(profile)
     drive = build("drive", "v3", credentials=creds, cache_discovery=False)
@@ -93,29 +102,35 @@ def _reconcile_profile(profile: str, airtable: AirtableGold | None) -> dict:
 
 
 def main() -> int:
+    strict = _strict_mode()
     if not os.getenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON", "").strip().strip("{}"):
         print("DRIVE_CLASSIFICATION_SKIPPED FINANCEPLUS_DRIVE_LABEL_MAP_JSON non configurato")
-        return 0
+        return 1 if strict else 0
 
     profiles = discover_google_profiles()
     if not profiles:
         print("DRIVE_CLASSIFICATION_SKIPPED nessun profilo Google configurato")
-        return 0
+        return 1 if strict else 0
 
     airtable = AirtableGold() if os.getenv("AIRTABLE_TOKEN", "").strip() else None
     results: dict[str, dict] = {}
+    failed = False
     for profile in profiles:
         env_name = token_env_name(profile)
         if not os.getenv(env_name, "").strip():
             results[profile] = {"status": "skipped", "reason": f"{env_name} non configurato"}
+            failed = True
             continue
         try:
             results[profile] = _reconcile_profile(profile, airtable)
+            if results[profile]["errors"]:
+                failed = True
         except Exception as exc:
             results[profile] = {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
+            failed = True
 
     print(json.dumps({"profiles": profiles, "results": results}, ensure_ascii=False, indent=2))
-    return 0
+    return 1 if strict and failed else 0
 
 
 if __name__ == "__main__":
