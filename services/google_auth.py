@@ -68,5 +68,22 @@ def load_credentials(profile: str | None = None) -> Credentials:
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
     if not creds.valid:
-        raise RuntimeError(f"Credenziali Google non valide o scope insufficienti per {env_name}")
+        raise RuntimeError(
+            f"Credenziali Google non valide o scope insufficienti per {env_name}"
+        )
+    return creds
+
+
+def load_credentials_json(raw: str, label: str = "profilo selezionato") -> Credentials:
+    """Build credentials from a Streamlit secret without mutating process env."""
+    if not str(raw or "").strip():
+        raise RuntimeError(f"Token Google non configurato per {label}")
+    info = json.loads(raw)
+    creds = Credentials.from_authorized_user_info(info, scopes=SCOPES)
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+    if not creds.valid:
+        raise RuntimeError(
+            f"Credenziali Google non valide o scope insufficienti per {label}"
+        )
     return creds

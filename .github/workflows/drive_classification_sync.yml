@@ -34,4 +34,4 @@ jobs:
           GOOGLE_OAUTH_TOKEN_JSON_PRATICHE: ${{ secrets.GOOGLE_OAUTH_TOKEN_JSON_PRATICHE }}
           FINANCEPLUS_GOOGLE_PROFILES: ${{ secrets.FINANCEPLUS_GOOGLE_PROFILES }}
           FINANCEPLUS_DRIVE_LABEL_MAP_JSON: ${{ secrets.FINANCEPLUS_DRIVE_LABEL_MAP_JSON }}
-        run: python scripts/sync_drive_classification.py
+        run: python -m scripts.sync_drive_classification

@@ -13,3 +13,7 @@ fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
 PyJWT[crypto]>=2.10,<3
 pdfservices-sdk>=4.3,<5
+Pillow>=10,<13
+pillow-heif>=0.18,<2
+pytesseract>=0.3.13,<1
+pypdfium2>=4.30,<6

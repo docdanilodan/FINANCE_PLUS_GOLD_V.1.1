@@ -20,6 +20,7 @@ from modules.credit_risk import CRMonth, analyze_cr
 from modules.dossier import build_dossier_markdown
 from modules.mandate import MandateInputs, calculate_mandate
 from modules.pdf_dossier import build_pdf as build_dossier_pdf
+from modules.smart_archive_ui import render_smart_archive
 from services.airtable_adapter import AirtableGold, DEFAULT_BASE_ID
 from services.gmail_drive_pipeline import sync_gmail_attachments
 from FinancePlus_Airtable.client_fascicolo import build_client_fascicolo_pdf, safe_fascicolo_filename
@@ -170,7 +171,7 @@ DB = airtable_client()
 PROFILES = google_profiles()
 
 st.title(f"🏦 {APP_NAME}")
-st.caption("CRM Airtable • Gmail/Drive • Document AI • Archivio • Analytics • CR • Conti correnti • Business Plan • Dossier • Mandati")
+st.caption("CRM Airtable • Gmail/Drive • Document AI • Archivio Smart • Analytics • CR • Conti correnti • Business Plan • Dossier • Mandati")
 
 with st.sidebar:
     st.markdown("### F_P_UNICO")
@@ -181,7 +182,7 @@ with st.sidebar:
     st.divider()
     page = st.radio(
         "Menu",
-        ["🏠 Dashboard", "👥 Clienti", "📚 Documenti", "🤖 Document AI", "✉️ Gmail & Drive", "📊 Analytics", "🏦 Centrale Rischi", "💳 Conti Correnti", "📈 Business Plan", "📄 Dossier Banca", "📝 Mandati"],
+        ["🏠 Dashboard", "👥 Clienti", "🗂️ Archivio Smart", "🤖 Document AI", "✉️ Gmail & Drive", "📊 Analytics", "🏦 Centrale Rischi", "💳 Conti Correnti", "📈 Business Plan", "📄 Dossier Banca", "📝 Mandati"],
         label_visibility="collapsed",
     )
     st.divider()
@@ -228,7 +229,7 @@ if page == "🏠 Dashboard":
                 st.markdown("### ✉️ Email prioritarie")
                 wanted = [c for c in ["Data e ora", "Cliente", "Mittente", "Oggetto", "Priorità", "Azione Richiesta", "Gestita"] if c in urgent.columns]
                 st.dataframe(urgent[wanted].head(50), use_container_width=True, hide_index=True)
-    st.info("Pipeline unica: Gmail/Upload → Document AI → SHA-256 → Drive → Airtable → Analytics + CR + CC → Business Plan → Dossier/Fascicolo Cliente")
+    st.info("Pipeline unica: Gmail/Upload/Cellulare → Archivio Smart + Document AI → SHA-256 → Drive → Airtable → Analytics + CR + CC → Business Plan → Dossier/Fascicolo Cliente")
 
 
 elif page == "👥 Clienti":
@@ -345,34 +346,8 @@ elif page == "👥 Clienti":
                 b.download_button("📁 Fascicolo Cliente completo", fascicolo, filename, "application/pdf", use_container_width=True)
 
 
-elif page == "📚 Documenti":
-    st.subheader("📚 Archivio documentale unico")
-    if not DB:
-        st.warning("Airtable non autenticato.")
-    else:
-        try:
-            df = records_df(DB.list_records("documenti", max_records=5000))
-        except Exception as exc:
-            st.error(str(exc)); df = pd.DataFrame()
-        if not df.empty:
-            c1, c2, c3 = st.columns(3)
-            q = c1.text_input("Cerca documento").strip().casefold()
-            types = sorted({str(v) for v in df.get("Tipo Documento", pd.Series(dtype=str)).dropna() if str(v).strip()})
-            origins = sorted({str(v) for v in df.get("Origine", pd.Series(dtype=str)).dropna() if str(v).strip()})
-            typ = c2.selectbox("Tipo", ["Tutti"] + types)
-            origin = c3.selectbox("Origine", ["Tutte"] + origins)
-            work = df.copy()
-            if q:
-                work = work[work.astype(str).agg(" ".join, axis=1).str.casefold().str.contains(re.escape(q), regex=True, na=False)]
-            if typ != "Tutti" and "Tipo Documento" in work.columns:
-                work = work[work["Tipo Documento"].astype(str) == typ]
-            if origin != "Tutte" and "Origine" in work.columns:
-                work = work[work["Origine"].astype(str) == origin]
-            wanted = [c for c in ["Cliente", "Documento", "Tipo Documento", "Esercizio", "Data Documento", "Origine", "Stato Verifica", "Nome Originale", "Nome Definitivo", "URL Drive", "SHA-256"] if c in work.columns]
-            st.metric("Documenti filtrati", len(work))
-            st.dataframe(work[wanted], use_container_width=True, hide_index=True, column_config={"URL Drive": st.column_config.LinkColumn("Drive", display_text="Apri")})
-        else:
-            st.info("Archivio vuoto.")
+elif page == "🗂️ Archivio Smart":
+    render_smart_archive(DB, PROFILES, secret)
 
 
 elif page == "🤖 Document AI":

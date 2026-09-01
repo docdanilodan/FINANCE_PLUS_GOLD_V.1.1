@@ -17,7 +17,7 @@ Anche i precedenti `app.py` e `FinancePlus_Airtable/streamlit_app.py` sono mante
 1. **Dashboard operativa** con Clienti, Pratiche, Documenti, Email, Analisi e alert dossier.
 2. **Clienti Airtable** con ricerca, anagrafica camerale, modifica dati e linked records.
 3. **Pratiche** con creazione dal cliente, banca/intermediario, importo, priorità, responsabile, prossima azione, scadenza e documenti mancanti.
-4. **Archivio documentale** con filtri, origine, stato verifica, SHA-256 e link Drive.
+4. **Archivio Smart** con acquisizione da PC/iPhone/Android, fotocamera, OCR locale, anteprima obbligatoria, classificazione, filtri, stato verifica, SHA-256 e link Drive.
 5. **Report Cliente PDF** con documenti e controllo pratiche.
 6. **Fascicolo Cliente PDF** con anagrafica, documenti, pratiche, email e analisi creditizie.
 7. **Document AI** content-first per classificazione e naming di visure, bilanci, ricevute deposito, bozze, analitici, prospetti, CR, estratti conto, fatture, contratti, DURC, CV, offerte, preventivi e presentazioni.
@@ -33,7 +33,8 @@ Anche i precedenti `app.py` e `FinancePlus_Airtable/streamlit_app.py` sono mante
 ## Pipeline unica
 
 ```text
-Gmail / Upload
+Gmail / Upload / Fotocamera cellulare
+  → Archivio Smart (OCR locale + verifica umana)
   → Document AI
   → Deduplica SHA-256
   → Google Drive
@@ -60,6 +61,11 @@ GOOGLE_DRIVE_FOLDER_ID = "..."
 # Profili Google aggiuntivi opzionali
 GOOGLE_OAUTH_TOKEN_JSON_STUDIO = "..."
 GOOGLE_OAUTH_TOKEN_JSON_PRATICHE = "..."
+
+# OCR locale (nessun invio cloud automatico)
+FINANCEPLUS_OCR_LANGUAGES = "ita+eng"
+FINANCEPLUS_OCR_MAX_PAGES = "30"
+FINANCEPLUS_SMART_ARCHIVE_CLOUD_EXTRACTOR = "false"
 ```
 
 I token non devono essere pubblicati nel repository.
@@ -82,8 +88,42 @@ analytics_engine.py           # KPI, score e Data Quality Gate
 document_ai.py                # classificazione e naming
 modules/                      # CR, CC, BP, dossier, PDF, mandati
 services/                     # Airtable, Gmail/Drive, matching cliente/pratica
+services/smart_archive.py     # analisi e commit coordinato Drive/Airtable
+modules/smart_archive_ui.py   # interfaccia mobile/desktop Archivio Smart
 FinancePlus_Airtable/         # generatori PDF e compatibilità legacy
 ```
+
+## Archivio Smart
+
+Dal menu **🗂️ Archivio Smart**:
+
+1. scegliere il profilo Google/Drive;
+2. caricare uno o più documenti oppure usare la fotocamera del cellulare;
+3. premere **Analizza e riconosci**;
+4. verificare categoria, cliente, pratica, esercizio e nome definitivo;
+5. confermare il salvataggio su Drive e l'indicizzazione in Airtable.
+
+I PDF nativi, i PDF scansionati, le immagini, i file TXT/CSV/XML/JSON, Word,
+Excel e PowerPoint vengono letti localmente. Le immagini HEIC dell'iPhone sono
+supportate. I duplicati sono bloccati tramite SHA-256 prima del caricamento e
+nuovamente al momento del salvataggio.
+
+La struttura generata per i documenti riconosciuti è:
+
+```text
+FINANCE_V.1.1_ARCHIVIO/
+  CLIENTI/<CLIENTE>/<ANNO>/<PRATICA>/<CATEGORIA>/
+```
+
+I documenti senza cliente certo vengono collocati in
+`DA_VERIFICARE/<ANNO>/<CATEGORIA>`. Se il salvataggio Airtable fallisce, il file
+Drive appena creato viene rimosso automaticamente per evitare documenti orfani.
+
+Su Streamlit Cloud il file `packages.txt` installa Tesseract e la lingua
+italiana. Per impostazione predefinita Archivio Smart usa soltanto OCR locale:
+il livello cloud opzionale resta disattivato finché
+`FINANCEPLUS_SMART_ARCHIVE_CLOUD_EXTRACTOR` non viene impostato esplicitamente a
+`true`.
 
 ## Deploy
 

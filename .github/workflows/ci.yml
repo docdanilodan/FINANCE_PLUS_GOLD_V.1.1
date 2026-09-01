@@ -35,6 +35,9 @@ jobs:
           python -m py_compile analytics_engine.py document_ai.py
           python -m py_compile modules/*.py services/*.py scripts/*.py FinancePlus_Airtable/client_fascicolo.py
 
+      - name: Smoke-test scheduled Drive module entrypoint
+        run: python -m scripts.sync_drive_classification | grep -q "DRIVE_CLASSIFICATION_SKIPPED"
+
       - name: Reject deprecated OpenAI Assistants API usage
         shell: bash
         run: |
