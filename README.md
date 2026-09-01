@@ -1,8 +1,8 @@
 # FINANCE_PLUS_UNICO V_1.1
 
-Repository unico per la versione web Streamlit e per la Desktop Edition standalone di FinancePlus.
+Repository unico per la **web app Streamlit** e la **Desktop Edition standalone** di FinancePlus.
 
-## 1. Streamlit Cloud - app master
+## 1. Streamlit Cloud - app ufficiale
 
 Entry point ufficiale:
 
@@ -10,26 +10,47 @@ Entry point ufficiale:
 streamlit_app.py
 ```
 
-`streamlit_app.py` applica il branding **FINANCE_PLUS_UNICO V_1.1** e avvia `master_app.py`, che resta il cuore della web app. I precedenti `app.py` e `FinancePlus_Airtable/streamlit_app.py` sono mantenuti solo come compatibility entrypoint.
+Il flusso attivo e ora:
 
-### Funzioni web integrate
+```text
+streamlit_app.py
+  -> streamlit_desktop_aligned.py
+  -> servizi/moduli FinancePlus
+```
 
-1. Dashboard operativa con Clienti, Pratiche, Documenti, Email, Analisi e alert dossier.
-2. Clienti Airtable con ricerca, anagrafica camerale, modifica dati e linked records.
-3. Pratiche con banca/intermediario, importo, priorita, responsabile, prossima azione, scadenza e documenti mancanti.
-4. Archivio documentale con filtri, origine, stato verifica, SHA-256 e link Drive.
-5. Report Cliente PDF e Fascicolo Cliente PDF.
-6. Document AI content-first per classificazione e naming.
-7. Gmail / Google Drive con deduplica e matching Cliente/Pratica.
-8. Aruba Mail multi-account tramite IMAP e Secrets.
-9. Analytics Engine con Data Quality Gate, KPI, score, rating AAA-D e semaforo.
-10. Centrale Rischi multi-mese.
-11. Conti correnti.
-12. Business Plan a 5 anni.
-13. Dossier Banca PDF + Markdown.
-14. Mandati e simulazione compensi.
+`streamlit_desktop_aligned.py` e la web master **FINANCE_PLUS_UNICO V_1.1 Web/Desktop aligned**. `master_app.py` resta nel repository come base precedente/fallback e non viene cancellato.
 
-Pipeline web:
+Anche gli entrypoint di compatibilita:
+
+```text
+app.py
+FinancePlus_Airtable/streamlit_app.py
+```
+
+aprono la stessa applicazione V_1.1.
+
+### Macro-funzioni web
+
+1. Dashboard operativa.
+2. Clienti 360 Airtable con ricerca, anagrafica e linked records.
+3. Pratiche e workflow con stato, priorita, responsabile, scadenze, documenti mancanti e alert.
+4. Archivio Documenti con filtri, origine, SHA-256, stato verifica e link Drive.
+5. Document AI content-first, classificazione e naming automatico.
+6. Email e Google Drive, con pipeline Gmail -> Drive -> Airtable.
+7. Aruba Mail multi-account tramite IMAP e Secrets.
+8. Analisi Creditizie con Data Quality Gate, KPI, score e rating AAA-D.
+9. Centrale Rischi multi-mese.
+10. Conti Correnti e cash-flow.
+11. Business Plan a 5 anni.
+12. Report PDF: Report Cliente, Fascicolo Cliente e Dossier Banca.
+13. Mandati e simulazione compensi.
+14. Impostazioni con stato connessioni e Secrets richiesti.
+
+### Grafica V_1.1
+
+La web app usa un workspace coerente con la Desktop Edition: sidebar blu notte, accenti rame, card bianche, navigazione per macro-funzioni e cruscotti operativi.
+
+### Pipeline web
 
 ```text
 Gmail / Aruba / Upload
@@ -44,47 +65,64 @@ Gmail / Aruba / Upload
 
 ## 2. Desktop Edition standalone
 
-La cartella:
+La cartella ufficiale e:
 
 ```text
 desktop/
 ```
 
-contiene la versione desktop verificata **FINANCE_PLUS_UNICO DESKTOP V1.0**, local-first, con SQLite e archivio locale.
-
-File principali:
+Distribuzione raccomandata:
 
 ```text
-desktop/FINANCE_PLUS_UNICO_DESKTOP.py
-desktop/INSTALLA_WINDOWS.bat
-desktop/AVVIA_SENZA_INSTALLARE_WINDOWS.bat
+desktop/FINANCEPLUS_DESKTOP_V1_0.py
+desktop/INSTALLA_E_AVVIA_WINDOWS.bat
+desktop/AVVIA_FINANCEPLUS.bat
 desktop/CREA_EXE_WINDOWS.bat
 desktop/requirements.txt
-desktop/README_INSTALLAZIONE.txt
+desktop/README.md
+desktop/ESEMPI/
 ```
 
-La Desktop Edition comprende Dashboard, CRM clienti, Pratiche, Archivio documentale, SHA-256, Document AI locale, Analytics, Centrale Rischi CSV, Conti Correnti CSV, Business Plan, Dossier Banca, Mandati e Fascicolo Cliente PDF.
+La Desktop Edition usa **SQLite e archivio locale**, quindi puo funzionare anche senza Airtable o Drive. Comprende Dashboard, Clienti 360, Pratiche, Documenti, Document AI, Email/IMAP, Analytics, CR, Conti Correnti, Business Plan, Report PDF, Mandati e Backup.
+
+Nel repository restano anche alcuni file Desktop precedenti per compatibilita; non sono stati cancellati per non rompere flussi gia esistenti.
 
 ### Installazione Windows
 
 1. Scaricare o clonare il repository.
-2. Aprire la cartella `desktop`.
-3. Eseguire `INSTALLA_WINDOWS.bat`.
-4. L'installer crea un ambiente Python isolato e un collegamento `FINANCE_PLUS_UNICO` sul Desktop.
+2. Aprire `desktop/`.
+3. Eseguire `INSTALLA_E_AVVIA_WINDOWS.bat`.
+4. L'installer crea un ambiente Python isolato, installa le librerie e avvia il programma.
 
-Per creare l'eseguibile Windows:
+Per generare un vero eseguibile Windows:
 
 ```text
 CREA_EXE_WINDOWS.bat
 ```
 
-Il vero `.exe` deve essere compilato su Windows con PyInstaller; non viene pubblicato un eseguibile non testato cross-platform.
+Output previsto:
 
-## 3. Secrets e sicurezza
+```text
+dist\FINANCEPLUS_DESKTOP_V1_0.exe
+```
+
+L'EXE va compilato e collaudato su Windows con PyInstaller.
+
+## 3. Streamlit Cloud
+
+Main file path:
+
+```text
+streamlit_app.py
+```
+
+Se un deployment Streamlit Cloud e gia collegato a questo repository, branch `main`, e a `streamlit_app.py`, i push su `main` vengono normalmente recepiti dal deployment. Se il deploy non esiste ancora, creare l'app Streamlit scegliendo questo repository e questo Main file path.
+
+## 4. Secrets e sicurezza
 
 Le credenziali non devono essere pubblicate nel repository.
 
-Configurare in Streamlit Cloud esclusivamente i Secrets necessari, ad esempio:
+Esempio Streamlit Secrets:
 
 ```toml
 AIRTABLE_TOKEN = "..."
@@ -98,18 +136,18 @@ ARUBA_PRATICHE_EMAIL = "pratiche@financeplus.tech"
 ARUBA_PRATICHE_PASSWORD = "..."
 ```
 
-Token, password e API key non devono essere inseriti nel codice.
+Token, password e API key non devono essere inseriti nel codice GitHub.
 
-## 4. Principio di controllo FinancePlus
+## 5. Principio FinancePlus
 
-FinancePlus non inventa dati finanziari mancanti. Se la fonte non permette di calcolare correttamente PFN, DSCR, rating o altri indicatori, il valore resta `N/D` / `INCOMPLETO` ed e segnalato dal Data Quality Gate.
+FinancePlus non inventa dati finanziari mancanti. Se la fonte non consente di calcolare correttamente PFN, DSCR, rating o altri indicatori, il valore resta `N/D` / `INCOMPLETO` ed e gestito dal **Data Quality Gate**.
 
-## 5. Architettura
+## 6. Architettura finale
 
-- GitHub: codice e versionamento.
-- Streamlit: web app operativa.
-- Airtable: CRM e dati strutturati.
-- Google Drive: storage documentale.
-- Gmail / Aruba: sorgenti email e allegati.
-- Desktop Edition: uso locale con SQLite e archivio locale.
-- Secrets: credenziali e token protetti.
+- **GitHub**: codice, versionamento, CI e automazioni.
+- **Streamlit**: web app operativa.
+- **Airtable**: CRM e dati strutturati.
+- **Google Drive**: storage documentale.
+- **Gmail / Aruba**: sorgenti email e allegati.
+- **Desktop Edition**: uso locale con SQLite e archivio locale.
+- **Secrets**: credenziali e token protetti.
