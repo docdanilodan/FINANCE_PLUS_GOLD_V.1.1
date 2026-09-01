@@ -1,18 +1,17 @@
 @echo off
 setlocal
 chcp 65001 >nul
-title Crea EXE FINANCE_PLUS_UNICO
-where py >nul 2>nul
-if %errorlevel% equ 0 (set "PYCMD=py -3") else (set "PYCMD=python")
+title Crea EXE FINANCEPLUS DESKTOP V1.0
 cd /d "%~dp0"
-%PYCMD% -m venv .buildvenv
-call .buildvenv\Scripts\activate.bat
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt pyinstaller
-pyinstaller --noconfirm --clean --onefile --windowed --name FINANCE_PLUS_UNICO_DESKTOP FINANCE_PLUS_UNICO_DESKTOP.py
-if exist dist\FINANCE_PLUS_UNICO_DESKTOP.exe (
+if not exist .venv\Scripts\python.exe (
+  call INSTALLA_E_AVVIA_WINDOWS.bat
+)
+call .venv\Scripts\activate.bat
+python -m pip install --upgrade pyinstaller
+pyinstaller --noconfirm --clean --onefile --windowed --name FINANCEPLUS_DESKTOP_V1_0 FINANCEPLUS_DESKTOP_V1_0.py
+if exist dist\FINANCEPLUS_DESKTOP_V1_0.exe (
   echo.
-  echo EXE creato: %CD%\dist\FINANCE_PLUS_UNICO_DESKTOP.exe
+  echo EXE creato: %CD%\dist\FINANCEPLUS_DESKTOP_V1_0.exe
   explorer dist
 ) else (
   echo Creazione EXE non riuscita.
