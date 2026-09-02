@@ -1,0 +1,30 @@
+{
+  "actor": "docdanilodan",
+  "archived_at": "2026-09-02T21:14:24.299280+00:00",
+  "conclusion": "success",
+  "created_at": "2026-09-02T21:13:20Z",
+  "event": "pull_request",
+  "head_branch": "docs/manuale-funzioni",
+  "head_sha": "030b40a3898be01625fc808aa19e1b23ccd8fc73",
+  "html_url": "https://github.com/docdanilodan/FINANCE_PLUS_GOLD_V.1.1/actions/runs/33683905713",
+  "jobs": [
+    {
+      "completed_at": "2026-09-02T21:14:11Z",
+      "conclusion": "success",
+      "id": 100426661439,
+      "name": "notify-financeplus",
+      "started_at": "2026-09-02T21:13:22Z",
+      "status": "completed",
+      "steps": []
+    }
+  ],
+  "repository": "docdanilodan/FINANCE_PLUS_GOLD_V.1.1",
+  "run_attempt": 1,
+  "run_id": 33683905713,
+  "run_number": 25,
+  "schema_version": 1,
+  "status": "completed",
+  "updated_at": "2026-09-02T21:14:12Z",
+  "workflow_id": 346456326,
+  "workflow_name": "FinancePlus GitHub event bridge"
+}
