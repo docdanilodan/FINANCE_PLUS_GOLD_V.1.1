@@ -27,11 +27,15 @@ def test_actions_audit_keeps_metadata_and_excludes_raw_logs():
             "name": "test",
             "status": "completed",
             "conclusion": "failure",
-            "steps": [{"number": 1, "name": "Run tests", "conclusion": "failure", "log": "secret"}],
+            "steps": [
+                {"number": 1, "name": "Checkout", "conclusion": "success"},
+                {"number": 2, "name": "Run tests", "conclusion": "failure", "log": "secret"},
+            ],
         }
     ]
     record = build_actions_audit_record(run, jobs)
     assert record["run_id"] == 123
+    assert len(record["jobs"][0]["steps"]) == 1
     assert record["jobs"][0]["steps"][0]["name"] == "Run tests"
     assert "logs" not in record
     assert "log" not in record["jobs"][0]["steps"][0]

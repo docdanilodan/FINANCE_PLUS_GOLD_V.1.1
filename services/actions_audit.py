@@ -24,6 +24,7 @@ def build_actions_audit_record(run: Mapping[str, Any], jobs: Iterable[Mapping[st
                 "conclusion": _text(step.get("conclusion"), 40),
             }
             for step in (job.get("steps") or [])
+            if _text(step.get("conclusion"), 40).casefold() == "failure"
         ]
         safe_jobs.append(
             {
