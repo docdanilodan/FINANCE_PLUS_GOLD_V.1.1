@@ -130,6 +130,8 @@ def main() -> int:
             failed = True
 
     print(json.dumps({"profiles": profiles, "results": results}, ensure_ascii=False, indent=2))
+    if not failed:
+        print("DRIVE_RECONCILIATION_OK")
     return 1 if strict and failed else 0
 
 
