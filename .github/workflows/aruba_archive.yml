@@ -27,6 +27,8 @@ jobs:
 
       - name: Archive Aruba mailboxes
         env:
+          # Make repository packages importable when the script is run directly.
+          PYTHONPATH: ${{ github.workspace }}
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
           GOOGLE_OAUTH_TOKEN_JSON: ${{ secrets.GOOGLE_OAUTH_TOKEN_JSON }}
