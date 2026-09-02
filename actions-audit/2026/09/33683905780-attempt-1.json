@@ -1,0 +1,30 @@
+{
+  "actor": "docdanilodan",
+  "archived_at": "2026-09-02T21:14:18.084984+00:00",
+  "conclusion": "success",
+  "created_at": "2026-09-02T21:13:20Z",
+  "event": "pull_request",
+  "head_branch": "docs/manuale-funzioni",
+  "head_sha": "030b40a3898be01625fc808aa19e1b23ccd8fc73",
+  "html_url": "https://github.com/docdanilodan/FINANCE_PLUS_GOLD_V.1.1/actions/runs/33683905780",
+  "jobs": [
+    {
+      "completed_at": "2026-09-02T21:14:05Z",
+      "conclusion": "success",
+      "id": 100426661771,
+      "name": "test",
+      "started_at": "2026-09-02T21:13:24Z",
+      "status": "completed",
+      "steps": []
+    }
+  ],
+  "repository": "docdanilodan/FINANCE_PLUS_GOLD_V.1.1",
+  "run_attempt": 1,
+  "run_id": 33683905780,
+  "run_number": 72,
+  "schema_version": 1,
+  "status": "completed",
+  "updated_at": "2026-09-02T21:14:06Z",
+  "workflow_id": 344309669,
+  "workflow_name": "FinancePlus unified CI"
+}
