@@ -1,0 +1,45 @@
+name: FinancePlus Actions audit archive
+
+on:
+  workflow_run:
+    workflows:
+      - FinancePlus unified CI
+      - FinancePlus Drive classification sync
+      - FinancePlus GitHub event bridge
+      - FinancePlus automatic Gmail archive
+      - FinancePlus automatic Aruba archive
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: financeplus-actions-audit
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install audit dependency
+        run: python -m pip install "requests>=2.32,<3"
+
+      - name: Archive sanitized workflow metadata
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_DEFAULT_BRANCH: main
+        run: python scripts/archive_actions_audit.py

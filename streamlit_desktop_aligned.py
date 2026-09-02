@@ -21,6 +21,7 @@ from modules.dossier import build_dossier_markdown
 from modules.mandate import MandateInputs, calculate_mandate
 from modules.pdf_dossier import build_pdf as build_dossier_pdf
 from services.airtable_adapter import AirtableGold, DEFAULT_BASE_ID
+from services.drive_preview import protected_drive_preview
 from services.gmail_drive_pipeline import sync_gmail_attachments
 from FinancePlus_Airtable.client_fascicolo import build_client_fascicolo_pdf, safe_fascicolo_filename
 
@@ -336,7 +337,25 @@ elif page == DOCUMENTS:
             if q: work = work[work.astype(str).agg(" ".join, axis=1).str.casefold().str.contains(re.escape(q), regex=True, na=False)]
             if typ != "Tutti" and "Tipo Documento" in work.columns: work = work[work["Tipo Documento"].astype(str) == typ]
             if origin != "Tutte" and "Origine" in work.columns: work = work[work["Origine"].astype(str) == origin]
-            wanted = [c for c in ["Cliente", "Documento", "Tipo Documento", "Esercizio", "Data Documento", "Origine", "Stato Verifica", "Nome Originale", "Nome Definitivo", "URL Drive", "SHA-256", "Caselle origine"] if c in work.columns]; st.metric("Documenti filtrati", len(work)); st.dataframe(work[wanted], use_container_width=True, hide_index=True, column_config={"URL Drive": st.column_config.LinkColumn("Drive", display_text="Apri")})
+            wanted = [c for c in ["Cliente", "Documento", "Tipo Documento", "Esercizio", "Data Documento", "Origine", "Stato Verifica", "Sensibilità dati", "Protezione Drive", "Policy elaborazione AI", "Nome Originale", "Nome Definitivo", "URL Drive", "SHA-256", "Caselle origine"] if c in work.columns]; st.metric("Documenti filtrati", len(work)); st.dataframe(work[wanted], use_container_width=True, hide_index=True, column_config={"URL Drive": st.column_config.LinkColumn("Drive", display_text="Apri")})
+            if "Protezione Drive" in work.columns:
+                cse = work[work["Protezione Drive"].fillna("").astype(str).str.casefold().eq("cse")]
+                if not cse.empty:
+                    st.markdown("### Anteprima protetta Drive")
+                    selected = st.selectbox(
+                        "Documento CSE",
+                        list(cse.index),
+                        format_func=lambda idx: " - ".join(
+                            part for part in [str(cse.loc[idx].get("Cliente", "")), str(cse.loc[idx].get("Documento", ""))] if part
+                        ),
+                    )
+                    preview = protected_drive_preview(cse.loc[selected].to_dict())
+                    st.info("Apertura diretta in Google Drive: nessun download o passaggio del contenuto attraverso FinancePlus.")
+                    if preview.allowed:
+                        st.link_button("Anteprima protetta Drive", preview.url, use_container_width=True)
+                    else:
+                        st.warning(preview.reason)
+                    st.caption("Policy elaborazione AI: Bloccata. La preview richiede un dominio Google Workspace ammesso alla beta CSE.")
 
 elif page == DOC_AI:
     st.subheader("Document AI - riconoscimento, naming e SHA-256")

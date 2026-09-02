@@ -33,9 +33,29 @@ class _Drive:
         return self._files
 
 
+class _FailingFiles:
+    def listLabels(self, **kwargs):
+        raise PermissionError("labels scope missing")
+
+
+class _FailingDrive:
+    def files(self):
+        return _FailingFiles()
+
+
 def test_drive_sync_strict_mode_fails_when_label_map_is_missing(monkeypatch):
     monkeypatch.setenv("FINANCEPLUS_DRIVE_SYNC_STRICT", "true")
     monkeypatch.delenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON", raising=False)
+    assert drive_sync.main() == 1
+
+
+def test_drive_sync_strict_mode_rejects_malformed_or_empty_mapping(monkeypatch):
+    monkeypatch.setenv("FINANCEPLUS_DRIVE_SYNC_STRICT", "true")
+    monkeypatch.setenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON", "{ }")
+    assert drive_sync.main() == 1
+    monkeypatch.setenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON", '{"choice":"Non supportata"}')
+    assert drive_sync.main() == 1
+    monkeypatch.setenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON", '["choice-secret"]')
     assert drive_sync.main() == 1
 
 
@@ -50,6 +70,27 @@ def test_drive_sync_strict_mode_fails_for_missing_profile_token(monkeypatch):
     monkeypatch.setenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON", '{"choice-secret":"Altamente riservato"}')
     monkeypatch.setenv("FINANCEPLUS_GOOGLE_PROFILES", "STUDIO")
     monkeypatch.delenv("GOOGLE_OAUTH_TOKEN_JSON_STUDIO", raising=False)
+    assert drive_sync.main() == 1
+
+
+def test_drive_sync_strict_mode_fails_when_a_profile_has_file_errors(monkeypatch):
+    monkeypatch.setenv("FINANCEPLUS_DRIVE_SYNC_STRICT", "true")
+    monkeypatch.setenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON", '{"choice-secret":"Altamente riservato"}')
+    monkeypatch.setenv("FINANCEPLUS_GOOGLE_PROFILES", "STUDIO")
+    monkeypatch.setenv("GOOGLE_OAUTH_TOKEN_JSON_STUDIO", "{}")
+    monkeypatch.delenv("AIRTABLE_TOKEN", raising=False)
+    monkeypatch.setattr(
+        drive_sync,
+        "_reconcile_profile",
+        lambda profile, airtable: {
+            "profile": profile,
+            "scanned": 1,
+            "labelled": 0,
+            "updated_drive": 0,
+            "updated_airtable": 0,
+            "errors": [{"file_id": "file-1", "error": "Drive labels non disponibili"}],
+        },
+    )
     assert drive_sync.main() == 1
 
 
@@ -136,6 +177,14 @@ def test_drive_label_without_mapping_keeps_financeplus_policy(monkeypatch):
     monkeypatch.setenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON", "{}")
     decision = resolve_drive_classification(_Drive([]), "file-1", fallback="Riservato")
     assert decision.sensitivity == "Riservato"
+
+
+def test_drive_label_read_failure_is_explicit(monkeypatch):
+    monkeypatch.setenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON", '{"choice-secret":"Altamente riservato"}')
+    decision = resolve_drive_classification(_FailingDrive(), "file-1", fallback="Riservato")
+    assert decision.sensitivity == "Riservato"
+    assert decision.source == "drive-labels-unavailable"
+    assert "PermissionError" in decision.error
 
 
 def test_pdf_cloud_blocked_for_highly_confidential(monkeypatch):

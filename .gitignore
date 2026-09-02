@@ -3,6 +3,7 @@
 *.local.json
 __pycache__/
 *.pyc
+.venv/
 mail_scaricate/
 storage/originali/
 storage/elaborati/

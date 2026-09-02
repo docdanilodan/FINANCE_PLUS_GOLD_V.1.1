@@ -45,6 +45,8 @@ aprono la stessa applicazione V_1.1.
 12. Report PDF: Report Cliente, Fascicolo Cliente e Dossier Banca.
 13. Mandati e simulazione compensi.
 14. Impostazioni con stato connessioni e Secrets richiesti.
+15. Anteprima protetta in Google Drive per PDF e immagini CSE, senza download o invio del contenuto a servizi AI.
+16. Storico persistente e sanitizzato dei workflow nel branch `audit/actions-history`.
 
 ### Grafica V_1.1
 
@@ -137,6 +139,8 @@ ARUBA_PRATICHE_PASSWORD = "..."
 ```
 
 Token, password e API key non devono essere inseriti nel codice GitHub.
+
+Le regole operative per Copilot, revisione umana, CSE e conservazione degli audit sono definite in `AI_DATA_GOVERNANCE.md` e `.github/copilot-instructions.md`.
 
 ## 5. Principio FinancePlus
 
