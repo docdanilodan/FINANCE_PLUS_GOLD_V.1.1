@@ -15,9 +15,10 @@ class DriveClassificationDecision:
     source: str = "financeplus-default"
     matched_token: str = ""
     labels_found: int = 0
+    error: str = ""
 
 
-def _load_mapping() -> dict[str, str]:
+def load_drive_label_mapping() -> dict[str, str]:
     """Load Drive label/field/value -> FinancePlus sensitivity mapping.
 
     Example:
@@ -37,11 +38,14 @@ def _load_mapping() -> dict[str, str]:
         data = json.loads(raw)
     except json.JSONDecodeError:
         return {}
+    if not isinstance(data, dict):
+        return {}
     out: dict[str, str] = {}
-    for key, value in dict(data).items():
+    for key, value in data.items():
+        normalized_key = str(key).strip().casefold()
         sensitivity = str(value).strip()
-        if sensitivity in ALLOWED_SENSITIVITY:
-            out[str(key).strip().casefold()] = sensitivity
+        if normalized_key and sensitivity in ALLOWED_SENSITIVITY:
+            out[normalized_key] = sensitivity
     return out
 
 
@@ -81,14 +85,18 @@ def resolve_drive_classification(drive, file_id: str, fallback: str = "Interno")
     if fallback not in ALLOWED_SENSITIVITY:
         fallback = "Interno"
 
-    mapping = _load_mapping()
+    mapping = load_drive_label_mapping()
     if not mapping or not file_id:
         return DriveClassificationDecision(sensitivity=fallback)
 
     try:
         response = drive.files().listLabels(fileId=file_id, maxResults=100).execute()
-    except Exception:
-        return DriveClassificationDecision(sensitivity=fallback, source="drive-labels-unavailable")
+    except Exception as exc:
+        return DriveClassificationDecision(
+            sensitivity=fallback,
+            source="drive-labels-unavailable",
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
     labels = response.get("labels", []) or response.get("items", []) or []
     best = fallback

@@ -1,0 +1,10 @@
+# Human review remains mandatory across FinancePlus.
+* @docdanilodan
+
+# High-risk paths must never rely on an automated approval.
+/.github/workflows/ @docdanilodan
+/.streamlit/ @docdanilodan
+/scripts/ @docdanilodan
+/services/google_auth.py @docdanilodan
+/services/drive_classification.py @docdanilodan
+/services/openai_responses.py @docdanilodan

@@ -21,6 +21,7 @@ from modules.dossier import build_dossier_markdown
 from modules.mandate import MandateInputs, calculate_mandate
 from modules.pdf_dossier import build_pdf as build_dossier_pdf
 from services.airtable_adapter import AirtableGold, DEFAULT_BASE_ID
+from services.drive_preview import generic_drive_link, protected_drive_preview
 from services.gmail_drive_pipeline import sync_gmail_attachments
 from FinancePlus_Airtable.client_fascicolo import build_client_fascicolo_pdf, safe_fascicolo_filename
 
@@ -293,7 +294,11 @@ elif page == CLIENTS:
                         except Exception as exc: st.error(f"Creazione non riuscita: {exc}")
             with tabs[2]:
                 if docs:
-                    wanted = ["Documento", "Tipo Documento", "Esercizio", "Data Documento", "Pratica ID", "Nome Originale", "Nome Definitivo", "Origine", "Stato Verifica", "URL Drive", "Archivio ZIP sorgente", "Percorso nel pacchetto"]; ddf = records_df(docs, wanted).drop(columns=["Record ID"], errors="ignore"); st.dataframe(ddf, use_container_width=True, hide_index=True, column_config={"URL Drive": st.column_config.LinkColumn("Drive", display_text="Apri"), "Archivio ZIP sorgente": st.column_config.LinkColumn("ZIP", display_text="Apri")})
+                    wanted = ["Documento", "Tipo Documento", "Esercizio", "Data Documento", "Pratica ID", "Nome Originale", "Nome Definitivo", "Origine", "Stato Verifica", "Protezione Drive", "URL Drive", "Archivio ZIP sorgente", "Percorso nel pacchetto"]
+                    ddf = records_df(docs, wanted).drop(columns=["Record ID"], errors="ignore")
+                    if "URL Drive" in ddf.columns:
+                        ddf["URL Drive"] = [generic_drive_link(row) for row in ddf.to_dict("records")]
+                    st.dataframe(ddf, use_container_width=True, hide_index=True, column_config={"URL Drive": st.column_config.LinkColumn("Drive", display_text="Apri"), "Archivio ZIP sorgente": st.column_config.LinkColumn("ZIP", display_text="Apri")})
                 else: st.info("Nessun documento collegato.")
             with tabs[3]:
                 if emails: st.dataframe(records_df(emails, ["Data e ora", "Mittente", "Oggetto", "Priorit\u00e0", "Azione Richiesta", "Allegati", "Gestita", "Sintesi IA"]).drop(columns=["Record ID"], errors="ignore"), use_container_width=True, hide_index=True)
@@ -336,7 +341,30 @@ elif page == DOCUMENTS:
             if q: work = work[work.astype(str).agg(" ".join, axis=1).str.casefold().str.contains(re.escape(q), regex=True, na=False)]
             if typ != "Tutti" and "Tipo Documento" in work.columns: work = work[work["Tipo Documento"].astype(str) == typ]
             if origin != "Tutte" and "Origine" in work.columns: work = work[work["Origine"].astype(str) == origin]
-            wanted = [c for c in ["Cliente", "Documento", "Tipo Documento", "Esercizio", "Data Documento", "Origine", "Stato Verifica", "Nome Originale", "Nome Definitivo", "URL Drive", "SHA-256", "Caselle origine"] if c in work.columns]; st.metric("Documenti filtrati", len(work)); st.dataframe(work[wanted], use_container_width=True, hide_index=True, column_config={"URL Drive": st.column_config.LinkColumn("Drive", display_text="Apri")})
+            wanted = [c for c in ["Cliente", "Documento", "Tipo Documento", "Esercizio", "Data Documento", "Origine", "Stato Verifica", "Sensibilità dati", "Protezione Drive", "Policy elaborazione AI", "Nome Originale", "Nome Definitivo", "URL Drive", "SHA-256", "Caselle origine"] if c in work.columns]
+            display_work = work[wanted].copy()
+            if "URL Drive" in display_work.columns:
+                display_work["URL Drive"] = [generic_drive_link(row) for row in display_work.to_dict("records")]
+            st.metric("Documenti filtrati", len(work))
+            st.dataframe(display_work, use_container_width=True, hide_index=True, column_config={"URL Drive": st.column_config.LinkColumn("Drive", display_text="Apri")})
+            if "Protezione Drive" in work.columns:
+                cse = work[work["Protezione Drive"].fillna("").astype(str).str.casefold().eq("cse")].reset_index(drop=True)
+                if not cse.empty:
+                    st.markdown("### Anteprima protetta Drive")
+                    selected = st.selectbox(
+                        "Documento CSE",
+                        list(cse.index),
+                        format_func=lambda idx: " - ".join(
+                            part for part in [str(cse.loc[idx].get("Cliente", "")), str(cse.loc[idx].get("Documento", ""))] if part
+                        ),
+                    )
+                    preview = protected_drive_preview(cse.loc[selected].to_dict())
+                    st.info("Apertura diretta in Google Drive: nessun download o passaggio del contenuto attraverso FinancePlus.")
+                    if preview.allowed:
+                        st.link_button("Anteprima protetta Drive", preview.url, use_container_width=True)
+                    else:
+                        st.warning(preview.reason)
+                    st.caption("Policy elaborazione AI: Bloccata. La preview richiede un dominio Google Workspace ammesso alla beta CSE.")
 
 elif page == DOC_AI:
     st.subheader("Document AI - riconoscimento, naming e SHA-256")

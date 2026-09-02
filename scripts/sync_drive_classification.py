@@ -7,7 +7,7 @@ import sys
 from googleapiclient.discovery import build
 
 from services.airtable_adapter import AirtableGold
-from services.drive_classification import ai_policy_for_sensitivity, resolve_drive_classification
+from services.drive_classification import ai_policy_for_sensitivity, load_drive_label_mapping, resolve_drive_classification
 from services.google_auth import discover_google_profiles, load_credentials, token_env_name
 
 
@@ -53,6 +53,15 @@ def _reconcile_profile(profile: str, airtable: AirtableGold | None) -> dict:
                 if current not in RANK:
                     current = "Interno"
                 decision = resolve_drive_classification(drive, item.get("id", ""), fallback=current)
+                if decision.source == "drive-labels-unavailable":
+                    summary["errors"].append(
+                        {
+                            "file_id": item.get("id", ""),
+                            "name": item.get("name", ""),
+                            "error": decision.error or "Drive labels non disponibili",
+                        }
+                    )
+                    continue
                 if decision.source == "google-drive-label":
                     summary["labelled"] += 1
 
@@ -103,8 +112,8 @@ def _reconcile_profile(profile: str, airtable: AirtableGold | None) -> dict:
 
 def main() -> int:
     strict = _strict_mode()
-    if not os.getenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON", "").strip().strip("{}"):
-        print("DRIVE_CLASSIFICATION_SKIPPED FINANCEPLUS_DRIVE_LABEL_MAP_JSON non configurato")
+    if not load_drive_label_mapping():
+        print("DRIVE_CLASSIFICATION_SKIPPED FINANCEPLUS_DRIVE_LABEL_MAP_JSON assente o non valido")
         return 1 if strict else 0
 
     profiles = discover_google_profiles()
