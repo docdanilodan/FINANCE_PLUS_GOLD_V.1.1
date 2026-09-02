@@ -14,10 +14,6 @@ permissions:
   actions: read
   contents: write
 
-concurrency:
-  group: financeplus-actions-audit
-  cancel-in-progress: false
-
 jobs:
   archive:
     runs-on: ubuntu-latest
