@@ -53,6 +53,35 @@ def test_drive_sync_strict_mode_fails_for_missing_profile_token(monkeypatch):
     assert drive_sync.main() == 1
 
 
+def test_drive_sync_emits_success_marker_after_complete_reconciliation(monkeypatch, capsys):
+    monkeypatch.setenv("FINANCEPLUS_DRIVE_SYNC_STRICT", "true")
+    monkeypatch.setenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON", '{"choice-secret":"Altamente riservato"}')
+    monkeypatch.setenv("FINANCEPLUS_GOOGLE_PROFILES", "STUDIO")
+    monkeypatch.setenv("GOOGLE_OAUTH_TOKEN_JSON_STUDIO", "{}")
+    monkeypatch.delenv("AIRTABLE_TOKEN", raising=False)
+    monkeypatch.setattr(
+        drive_sync,
+        "_reconcile_profile",
+        lambda profile, airtable: {
+            "profile": profile,
+            "scanned": 0,
+            "labelled": 0,
+            "updated_drive": 0,
+            "updated_airtable": 0,
+            "errors": [],
+        },
+    )
+
+    assert drive_sync.main() == 0
+    output = capsys.readouterr().out
+    assert '"profiles"' in output
+    assert '"scanned": 0' in output
+    assert '"labelled": 0' in output
+    assert '"updated_drive": 0' in output
+    assert '"updated_airtable": 0' in output
+    assert "DRIVE_RECONCILIATION_OK" in output
+
+
 def test_airtable_mcp_reads_allowed(monkeypatch):
     monkeypatch.delenv("FINANCEPLUS_AIRTABLE_MCP_RECORD_WRITE", raising=False)
     decision = evaluate_airtable_mcp_action("list_records")
