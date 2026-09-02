@@ -294,7 +294,11 @@ elif page == CLIENTS:
                         except Exception as exc: st.error(f"Creazione non riuscita: {exc}")
             with tabs[2]:
                 if docs:
-                    wanted = ["Documento", "Tipo Documento", "Esercizio", "Data Documento", "Pratica ID", "Nome Originale", "Nome Definitivo", "Origine", "Stato Verifica", "URL Drive", "Archivio ZIP sorgente", "Percorso nel pacchetto"]; ddf = records_df(docs, wanted).drop(columns=["Record ID"], errors="ignore"); st.dataframe(ddf, use_container_width=True, hide_index=True, column_config={"URL Drive": st.column_config.LinkColumn("Drive", display_text="Apri"), "Archivio ZIP sorgente": st.column_config.LinkColumn("ZIP", display_text="Apri")})
+                    wanted = ["Documento", "Tipo Documento", "Esercizio", "Data Documento", "Pratica ID", "Nome Originale", "Nome Definitivo", "Origine", "Stato Verifica", "Protezione Drive", "URL Drive", "Archivio ZIP sorgente", "Percorso nel pacchetto"]
+                    ddf = records_df(docs, wanted).drop(columns=["Record ID"], errors="ignore")
+                    if "URL Drive" in ddf.columns:
+                        ddf["URL Drive"] = [generic_drive_link(row) for row in ddf.to_dict("records")]
+                    st.dataframe(ddf, use_container_width=True, hide_index=True, column_config={"URL Drive": st.column_config.LinkColumn("Drive", display_text="Apri"), "Archivio ZIP sorgente": st.column_config.LinkColumn("ZIP", display_text="Apri")})
                 else: st.info("Nessun documento collegato.")
             with tabs[3]:
                 if emails: st.dataframe(records_df(emails, ["Data e ora", "Mittente", "Oggetto", "Priorit\u00e0", "Azione Richiesta", "Allegati", "Gestita", "Sintesi IA"]).drop(columns=["Record ID"], errors="ignore"), use_container_width=True, hide_index=True)
