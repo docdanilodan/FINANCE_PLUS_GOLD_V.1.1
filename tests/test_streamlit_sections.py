@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from streamlit.testing.v1 import AppTest
 
 
@@ -9,7 +11,8 @@ def test_streamlit_all_macro_sections_render_without_exceptions() -> None:
     External services are intentionally left unconfigured in CI: each page must
     still render its safe configuration/empty-state UI without crashing.
     """
-    app = AppTest.from_file("streamlit_app.py", default_timeout=30)
+    app_path = Path(__file__).resolve().parents[1] / "streamlit_app.py"
+    app = AppTest.from_file(app_path, default_timeout=30)
     app.run()
 
     assert not app.exception, [str(exc.value) for exc in app.exception]
