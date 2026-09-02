@@ -18,8 +18,7 @@ def test_streamlit_all_macro_sections_render_without_exceptions() -> None:
     assert not app.exception, [str(exc.value) for exc in app.exception]
     assert app.sidebar.radio, "Navigation radio was not rendered"
 
-    navigation = app.sidebar.radio[0]
-    options = list(navigation.options)
+    options = list(app.sidebar.radio[0].options)
     expected = {
         "🏠 Dashboard",
         "👥 Clienti 360",
@@ -38,6 +37,15 @@ def test_streamlit_all_macro_sections_render_without_exceptions() -> None:
     assert expected.issubset(set(options)), options
 
     for option in options:
-        navigation.set_value(option)
+        app.sidebar.radio[0].set_value(option)
         app.run()
-        assert not app.exception, f"Section {option!r} raised: {[str(exc.value) for exc in app.exception]}"
+
+        assert not app.exception, (
+            f"Section {option!r} raised: "
+            f"{[str(exc.value) for exc in app.exception]}"
+        )
+        assert app.sidebar.radio, (
+            f"Section {option!r} did not rerender the navigation"
+        )
+        assert app.sidebar.radio[0].value == option
+        assert app.title, f"Section {option!r} rendered a blank page"
