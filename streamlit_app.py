@@ -8,7 +8,6 @@ import streamlit as st
 # AppTest succeeds locally.
 _SHARED_APP = Path(__file__).with_name("streamlit_desktop_aligned.py")
 exec(compile(_SHARED_APP.read_text(encoding="utf-8"), str(_SHARED_APP), "exec"), globals(), globals())
-from services.aruba_mail_ui import render_aruba_mail_sidebar
 
 # Mobile safety navigation: Streamlit collapses the sidebar automatically on small screens.
 # Keep both the native reopen control and a persistent Menu Principale shortcut visible.
@@ -56,4 +55,5 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-render_aruba_mail_sidebar()
+# Aruba remains available inside the dedicated Email/Drive area.
+# Do not append a second global sidebar panel: on iPhone it obscures the main navigation.
