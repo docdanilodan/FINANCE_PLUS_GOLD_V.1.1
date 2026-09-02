@@ -1,11 +1,24 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from document_ai import DocumentResult
 from scripts import sync_drive_classification as drive_sync
 from services import gmail_drive_pipeline_v2 as gmail_v2
 from services.airtable_mcp_policy import evaluate_airtable_mcp_action
 from services.drive_classification import resolve_drive_classification
 from services.pdf_extraction import ExtractionResult, _cloud_allowed, extract_document_content
+
+
+def test_archive_workflows_expose_repository_root_to_python() -> None:
+    """Scheduled archive scripts must be able to import the services package."""
+
+    repository_root = Path(__file__).resolve().parents[1]
+    for workflow_name in ("gmail_archive.yml", "aruba_archive.yml"):
+        workflow = (repository_root / ".github" / "workflows" / workflow_name).read_text(
+            encoding="utf-8"
+        )
+        assert "PYTHONPATH: ${{ github.workspace }}" in workflow
 
 
 class _Execute:
