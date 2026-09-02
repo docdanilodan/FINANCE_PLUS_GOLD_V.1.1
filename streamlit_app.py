@@ -1,7 +1,13 @@
 # Entry point unico Streamlit - F_P_GOLD V_1.1 Web/Desktop aligned.
+from pathlib import Path
+
 import streamlit as st
 
-from streamlit_desktop_aligned import *  # noqa: F401,F403
+# Execute the shared UI in the actual Streamlit entrypoint context. Importing it
+# as a module can leave the deployed frontend with an empty main area even when
+# AppTest succeeds locally.
+_SHARED_APP = Path(__file__).with_name("streamlit_desktop_aligned.py")
+exec(compile(_SHARED_APP.read_text(encoding="utf-8"), str(_SHARED_APP), "exec"), globals(), globals())
 from services.aruba_mail_ui import render_aruba_mail_sidebar
 
 # Mobile safety navigation: Streamlit collapses the sidebar automatically on small screens.
