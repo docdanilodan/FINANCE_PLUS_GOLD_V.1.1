@@ -1,4 +1,4 @@
-from services.drive_preview import protected_drive_preview
+from services.drive_preview import generic_drive_link, protected_drive_preview
 
 
 def test_cse_preview_allows_only_direct_google_drive_https_url():
@@ -47,3 +47,14 @@ def test_cse_preview_is_limited_to_pdf_and_images():
         }
     )
     assert decision.allowed is False
+
+
+def test_generic_table_never_exposes_cse_drive_url():
+    cse = {
+        "Protezione Drive": "CSE",
+        "Documento": "bilancio.pdf",
+        "URL Drive": "https://drive.google.com/file/d/file-1/view",
+    }
+    standard = {"Protezione Drive": "Standard", "URL Drive": "https://drive.google.com/file/d/file-2/view"}
+    assert generic_drive_link(cse) == ""
+    assert generic_drive_link(standard) == standard["URL Drive"]

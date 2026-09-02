@@ -38,6 +38,13 @@ def is_cse_document(fields: Mapping[str, Any]) -> bool:
     return _text(fields, "Protezione Drive").casefold() == "cse"
 
 
+def generic_drive_link(fields: Mapping[str, Any]) -> str:
+    """Hide CSE URLs from generic tables so access cannot bypass validation."""
+    if is_cse_document(fields):
+        return ""
+    return _text(fields, "URL Drive")
+
+
 def _previewable_name(fields: Mapping[str, Any]) -> str:
     for key in ("Nome Definitivo", "Nome Originale", "Documento"):
         name = _text(fields, key)
