@@ -1,7 +1,16 @@
 # Entry point unico Streamlit - F_P_GOLD V_1.1 Web/Desktop aligned.
+from pathlib import Path
+import runpy
+
 import streamlit as st
 
-from streamlit_desktop_aligned import *  # noqa: F401,F403
+# Execute the UI script on every Streamlit rerun. Importing it normally would
+# leave it cached in sys.modules, producing a blank page after any interaction.
+runpy.run_path(
+    str(Path(__file__).with_name("streamlit_desktop_aligned.py")),
+    run_name="__main__",
+)
+
 from services.aruba_mail_ui import render_aruba_mail_sidebar
 
 # Mobile safety navigation: Streamlit collapses the sidebar automatically on small screens.
