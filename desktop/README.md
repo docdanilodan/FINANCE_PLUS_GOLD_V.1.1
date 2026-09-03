@@ -1,4 +1,4 @@
-# FINANCEPLUS DESKTOP V1.0
+# FINANCE_PLUS_UNICO DESKTOP V1.1
 
 Versione desktop standalone del progetto FinancePlus, mantenuta nello stesso repository della web app Streamlit.
 
@@ -6,14 +6,14 @@ Versione desktop standalone del progetto FinancePlus, mantenuta nello stesso rep
 
 1. Scarica la cartella `desktop` o il pacchetto ZIP distribuito con la release.
 2. Esegui `INSTALLA_E_AVVIA_WINDOWS.bat`.
-3. L'installer crea `.venv`, installa le dipendenze e avvia `FINANCEPLUS_DESKTOP_V1_0.py`.
+3. L'installer crea `.venv`, installa le dipendenze e avvia `FINANCE_PLUS_UNICO_DESKTOP.py`.
 4. I dati locali vengono salvati nella cartella FinancePlus dell'utente Windows tramite SQLite e archivio locale.
 
 ## EXE
 
 Esegui `CREA_EXE_WINDOWS.bat` per generare:
 
-`dist\FINANCEPLUS_DESKTOP_V1_0.exe`
+`dist\FINANCE_PLUS_UNICO_DESKTOP_V1_1.exe`
 
 La compilazione EXE deve essere eseguita su Windows e viene effettuata con PyInstaller.
 

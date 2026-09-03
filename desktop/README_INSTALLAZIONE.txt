@@ -1,4 +1,4 @@
-FINANCE_PLUS_UNICO DESKTOP V1.0
+FINANCE_PLUS_UNICO DESKTOP V1.1
 ================================
 
 INSTALLAZIONE CONSIGLIATA (WINDOWS 10/11)
@@ -33,7 +33,7 @@ Aprire Configurazione nel programma e inserire, se disponibili:
 - Adobe PDF Services Client ID + Secret
 
 CREAZIONE .EXE
-Su un PC Windows, eseguire CREA_EXE_WINDOWS.bat. Il file EXE verrà creato in dist\.
+Su un PC Windows, eseguire CREA_EXE_WINDOWS.bat. Il file FINANCE_PLUS_UNICO_DESKTOP_V1_1.exe verrà creato in dist\.
 PyInstaller non permette di creare correttamente un EXE Windows da Linux/macOS: per questo lo script di build è incluso nel pacchetto.
 
 SICUREZZA
