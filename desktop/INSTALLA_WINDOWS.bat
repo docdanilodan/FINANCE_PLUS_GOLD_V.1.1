@@ -4,7 +4,7 @@ chcp 65001 >nul
 title Installazione FINANCE_PLUS_UNICO DESKTOP
 color 1F
 echo ================================================================
-echo   FINANCE_PLUS_UNICO DESKTOP V1.0 - INSTALLAZIONE WINDOWS
+echo   FINANCE_PLUS_UNICO DESKTOP V1.1 - INSTALLAZIONE WINDOWS
 echo ================================================================
 echo.
 where py >nul 2>nul
