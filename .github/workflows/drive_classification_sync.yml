@@ -13,19 +13,44 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Check Drive classification configuration
+        id: config
+        env:
+          FINANCEPLUS_DRIVE_LABEL_MAP_JSON: ${{ secrets.FINANCEPLUS_DRIVE_LABEL_MAP_JSON }}
+          GOOGLE_OAUTH_TOKEN_JSON: ${{ secrets.GOOGLE_OAUTH_TOKEN_JSON }}
+          GOOGLE_OAUTH_TOKEN_JSON_STUDIO: ${{ secrets.GOOGLE_OAUTH_TOKEN_JSON_STUDIO }}
+          GOOGLE_OAUTH_TOKEN_JSON_PRATICHE: ${{ secrets.GOOGLE_OAUTH_TOKEN_JSON_PRATICHE }}
+        shell: bash
+        run: |
+          if [ -z "$FINANCEPLUS_DRIVE_LABEL_MAP_JSON" ]; then
+            echo "::notice::Drive classification inactive: add FINANCEPLUS_DRIVE_LABEL_MAP_JSON to GitHub Actions Secrets."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$GOOGLE_OAUTH_TOKEN_JSON" ] && [ -z "$GOOGLE_OAUTH_TOKEN_JSON_STUDIO" ] && [ -z "$GOOGLE_OAUTH_TOKEN_JSON_PRATICHE" ]; then
+            echo "::notice::Drive classification inactive: add at least one Google OAuth token secret."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
+        if: steps.config.outputs.configured == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Python
+        if: steps.config.outputs.configured == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
 
       - name: Install dependencies
+        if: steps.config.outputs.configured == 'true'
         run: pip install -r requirements.txt
 
       - name: Reconcile Google Drive labels with FinancePlus policy
+        if: steps.config.outputs.configured == 'true'
         env:
           # The script lives under scripts/, while application packages live
           # at repository root. Make that root explicit for direct execution.

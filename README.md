@@ -47,6 +47,9 @@ aprono la stessa applicazione V_1.1.
 14. Impostazioni con stato connessioni e Secrets richiesti.
 15. Anteprima protetta in Google Drive per PDF e immagini CSE, senza download o invio del contenuto a servizi AI.
 16. Storico persistente e sanitizzato dei workflow nel branch `audit/actions-history`.
+17. Cruscotto costi OpenAI per API key ID/modulo, accessibile solo con chiave amministrativa separata.
+18. Client Airtable Webhooks con cursor drain, limite di pagina e riattivazione notifiche.
+19. Stato di readiness per CData Management API, SIEM e custom instructions.
 
 ### Grafica V_1.1
 
@@ -139,6 +142,16 @@ ARUBA_PRATICHE_PASSWORD = "..."
 ```
 
 Token, password e API key non devono essere inseriti nel codice GitHub.
+
+Il cruscotto costi usa `OPENAI_ADMIN_KEY` esclusivamente in lettura sull'endpoint
+`/v1/organization/costs`. Gli ID delle chiavi possono essere associati ai moduli
+`DOCUMENTI`, `MAIL`, `KPI`, `REPORT` e `AGENTI` tramite
+`FINANCEPLUS_OPENAI_KEY_LABELS_JSON`; i valori segreti delle chiavi non vengono mostrati.
+
+I workflow schedulati Gmail, Aruba e Drive eseguono ora un preflight dei Secrets.
+Quando una connessione non è ancora configurata terminano con un notice neutro,
+senza generare un falso errore di processo. Un'indisponibilità temporanea della sola
+telemetria Event API non invalida più un archivio Gmail già completato.
 
 Le regole operative per Copilot, revisione umana, CSE e conservazione degli audit sono definite in `AI_DATA_GOVERNANCE.md` e `.github/copilot-instructions.md`.
 
