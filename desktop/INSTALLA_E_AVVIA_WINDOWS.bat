@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 echo ===============================================
-echo   FINANCEPLUS DESKTOP V1.0 - INSTALLAZIONE
+echo   FINANCE_PLUS_UNICO DESKTOP V1.1 - INSTALLAZIONE
 echo ===============================================
 where python >nul 2>nul
 if errorlevel 1 (
