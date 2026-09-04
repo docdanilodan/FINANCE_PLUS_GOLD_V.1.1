@@ -23,7 +23,7 @@ from modules.pdf_dossier import build_pdf as build_dossier_pdf
 from services.airtable_adapter import AirtableGold, DEFAULT_BASE_ID
 from services.drive_preview import generic_drive_link, protected_drive_preview
 from services.gmail_drive_pipeline import sync_gmail_attachments
-from services.openai_usage import OpenAIUsageClient, flatten_costs, load_key_labels
+from services.openai_usage import OpenAIUsageClient, flatten_costs, load_project_labels
 from FinancePlus_Airtable.client_fascicolo import build_client_fascicolo_pdf, safe_fascicolo_filename
 
 APP_NAME = "FINANCE_PLUS_UNICO V_1.1"
@@ -458,7 +458,7 @@ elif page == SETTINGS:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
         st.warning("Password, token e OAuth non devono essere salvati nel codice GitHub.")
     with tabs[1]:
-        st.caption("Costi organizzazione OpenAI raggruppati per API key ID e voce. Il valore della chiave non viene mostrato o salvato.")
+        st.caption("Costi organizzazione OpenAI raggruppati per progetto e voce. Le chiavi non vengono mostrate o salvate.")
         if not openai_admin:
             st.info("Aggiungi OPENAI_ADMIN_KEY ai Secrets del deployment per attivare il cruscotto costi.")
         c1, c2 = st.columns(2)
@@ -473,7 +473,7 @@ elif page == SETTINGS:
                 buckets = client.costs(start=start_day, end=end_day + timedelta(days=1))
                 rows = flatten_costs(
                     buckets,
-                    load_key_labels(secret("FINANCEPLUS_OPENAI_KEY_LABELS_JSON", "{}")),
+                    load_project_labels(secret("FINANCEPLUS_OPENAI_PROJECT_LABELS_JSON", "{}")),
                 )
                 costs = pd.DataFrame(rows)
                 if costs.empty:
@@ -513,7 +513,7 @@ elif page == SETTINGS:
             "FINANCEPLUS_DRIVE_LABEL_MAP_JSON = \"{}\"\n"
             "OPENAI_API_KEY = \"...\"\n"
             "OPENAI_ADMIN_KEY = \"...\"\n"
-            "FINANCEPLUS_OPENAI_KEY_LABELS_JSON = \"{\\\"key_id\\\":\\\"DOCUMENTI\\\"}\"\n"
+            "FINANCEPLUS_OPENAI_PROJECT_LABELS_JSON = \"{\\\"proj_id\\\":\\\"DOCUMENTI\\\"}\"\n"
             "CDATA_USER = \"...\"\n"
             "CDATA_PAT = \"...\"\n"
             "CDATA_MANAGEMENT_API_URL = \"...\"\n"

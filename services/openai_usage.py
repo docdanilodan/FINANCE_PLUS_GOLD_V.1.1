@@ -44,7 +44,7 @@ class OpenAIUsageClient:
         *,
         start: date | datetime | int,
         end: date | datetime | int | None = None,
-        api_key_ids: Iterable[str] | None = None,
+        project_ids: Iterable[str] | None = None,
         max_pages: int = 20,
     ) -> list[dict[str, Any]]:
         start_time = self._unix_start(start)
@@ -56,14 +56,14 @@ class OpenAIUsageClient:
             ("start_time", start_time),
             ("bucket_width", "1d"),
             ("limit", 180),
-            ("group_by", "api_key_id"),
+            ("group_by", "project_id"),
             ("group_by", "line_item"),
         ]
         if end_time is not None:
             params.append(("end_time", end_time))
-        for key_id in api_key_ids or []:
-            if str(key_id).strip():
-                params.append(("api_key_ids", str(key_id).strip()))
+        for project_id in project_ids or []:
+            if str(project_id).strip():
+                params.append(("project_ids", str(project_id).strip()))
 
         buckets: list[dict[str, Any]] = []
         page: str | None = None
@@ -87,9 +87,9 @@ class OpenAIUsageClient:
         return buckets
 
 
-def load_key_labels(raw: str | None = None) -> dict[str, str]:
-    """Map non-secret API key IDs to FinancePlus module labels."""
-    source = raw if raw is not None else os.getenv("FINANCEPLUS_OPENAI_KEY_LABELS_JSON", "{}")
+def load_project_labels(raw: str | None = None) -> dict[str, str]:
+    """Map non-secret OpenAI project IDs to FinancePlus module labels."""
+    source = raw if raw is not None else os.getenv("FINANCEPLUS_OPENAI_PROJECT_LABELS_JSON", "{}")
     try:
         parsed = json.loads(source or "{}")
     except json.JSONDecodeError:
@@ -105,21 +105,21 @@ def load_key_labels(raw: str | None = None) -> dict[str, str]:
 
 def flatten_costs(
     buckets: Iterable[dict[str, Any]],
-    key_labels: dict[str, str] | None = None,
+    project_labels: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    labels = key_labels or {}
+    labels = project_labels or {}
     rows: list[dict[str, Any]] = []
     for bucket in buckets:
         start_time = int(bucket.get("start_time") or 0)
         day = datetime.fromtimestamp(start_time, tz=timezone.utc).date().isoformat() if start_time else ""
         for result in bucket.get("results", []) or []:
             amount = result.get("amount") or {}
-            key_id = str(result.get("api_key_id") or "non attribuita")
+            project_id = str(result.get("project_id") or "non attribuito")
             rows.append(
                 {
                     "Data": day,
-                    "Modulo": labels.get(key_id, "Non mappato"),
-                    "API key ID": key_id,
+                    "Modulo": labels.get(project_id, "Non mappato"),
+                    "Project ID": project_id,
                     "Voce": str(result.get("line_item") or "Totale"),
                     "Importo": float(amount.get("value") or 0),
                     "Valuta": str(amount.get("currency") or "usd").upper(),
