@@ -13,19 +13,44 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      - name: Check Aruba archive configuration
+        id: config
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          GOOGLE_OAUTH_TOKEN_JSON: ${{ secrets.GOOGLE_OAUTH_TOKEN_JSON }}
+          ARUBA_D_DANGELO_PASSWORD: ${{ secrets.ARUBA_D_DANGELO_PASSWORD }}
+          ARUBA_PRATICHE_PASSWORD: ${{ secrets.ARUBA_PRATICHE_PASSWORD }}
+        shell: bash
+        run: |
+          if [ -z "$AIRTABLE_TOKEN" ] || [ -z "$GOOGLE_OAUTH_TOKEN_JSON" ]; then
+            echo "::notice::Aruba archive inactive: AIRTABLE_TOKEN and GOOGLE_OAUTH_TOKEN_JSON are required."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$ARUBA_D_DANGELO_PASSWORD" ] && [ -z "$ARUBA_PRATICHE_PASSWORD" ]; then
+            echo "::notice::Aruba archive inactive: add at least one Aruba mailbox password to GitHub Actions Secrets."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
+        if: steps.config.outputs.configured == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Python
+        if: steps.config.outputs.configured == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
 
       - name: Install dependencies
+        if: steps.config.outputs.configured == 'true'
         run: pip install -r requirements.txt
 
       - name: Archive Aruba mailboxes
+        if: steps.config.outputs.configured == 'true'
         env:
           # Make repository packages importable when the script is run directly.
           PYTHONPATH: ${{ github.workspace }}
