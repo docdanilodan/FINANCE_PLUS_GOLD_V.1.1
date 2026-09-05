@@ -1,0 +1,37 @@
+{
+  "actor": "docdanilodan",
+  "archived_at": "2026-09-05T16:51:38.134468+00:00",
+  "conclusion": "failure",
+  "created_at": "2026-09-05T16:50:20Z",
+  "event": "schedule",
+  "head_branch": "main",
+  "head_sha": "5055957602e8b6b38dc23a696ba0d4abaa5099cb",
+  "html_url": "https://github.com/docdanilodan/FINANCE_PLUS_GOLD_V.1.1/actions/runs/33979092256",
+  "jobs": [
+    {
+      "completed_at": "2026-09-05T16:51:28Z",
+      "conclusion": "failure",
+      "id": 101340925271,
+      "name": "archive",
+      "started_at": "2026-09-05T16:50:22Z",
+      "status": "completed",
+      "steps": [
+        {
+          "conclusion": "failure",
+          "name": "Send Gmail event to FinancePlus Event API",
+          "number": 6,
+          "status": "completed"
+        }
+      ]
+    }
+  ],
+  "repository": "docdanilodan/FINANCE_PLUS_GOLD_V.1.1",
+  "run_attempt": 1,
+  "run_id": 33979092256,
+  "run_number": 44,
+  "schema_version": 1,
+  "status": "completed",
+  "updated_at": "2026-09-05T16:51:29Z",
+  "workflow_id": 344308948,
+  "workflow_name": "FinancePlus automatic Gmail archive"
+}
