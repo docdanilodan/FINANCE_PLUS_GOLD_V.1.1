@@ -61,3 +61,27 @@ jobs:
           name: pytest-diagnostic
           path: pytest-output.txt
           if-no-files-found: warn
+
+      - name: Build complete source package
+        if: success() && github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          zip -r FINANCE_PLUS_UNICO_V1.1_COMPLETO.zip . \
+            -x '.git/*' \
+               'pytest-output.txt' \
+               'FINANCE_PLUS_UNICO_V1.1_COMPLETO.zip' \
+               '__pycache__/*' \
+               '*/__pycache__/*' \
+               '*.pyc'
+          sha256sum FINANCE_PLUS_UNICO_V1.1_COMPLETO.zip > FINANCE_PLUS_UNICO_V1.1_COMPLETO.zip.sha256
+
+      - name: Upload complete source package
+        if: success() && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: financeplus-unico-complete-source
+          path: |
+            FINANCE_PLUS_UNICO_V1.1_COMPLETO.zip
+            FINANCE_PLUS_UNICO_V1.1_COMPLETO.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
