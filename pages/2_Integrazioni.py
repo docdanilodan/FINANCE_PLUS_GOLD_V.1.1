@@ -124,34 +124,60 @@ if st.button("Esegui test connessioni", type="primary"):
     )
     st.caption("I test non stampano credenziali e non modificano dati.")
 
-st.subheader("Plugin ChatGPT — registro progetto")
+st.subheader("Plugin ChatGPT — installati e verificati")
 plugin_rows = [
-    ("Gmail", "Installato", "Operativo lato ChatGPT; runtime FinancePlus dipende dai Secrets Google"),
-    ("Google Drive", "Installato", "Operativo lato ChatGPT; runtime FinancePlus dipende dai Secrets Google"),
-    ("GitHub", "Installato", "Repository e deploy gestibili"),
-    ("Airtable", "Installato", "Base FinancePlus collegata lato ChatGPT"),
-    ("Render", "Installato", "Deploy e log gestibili"),
-    ("CData Connect AI", "Installato / da verificare", "Ultimo test noto: errore HTTP 500"),
-    ("GSC Wizard", "Installato / bloccato", "Ultimo stato noto: piano/trial da riattivare"),
-    ("WordPress.com", "Installato", "Disponibile lato ChatGPT"),
-    ("Adobe", "Installato", "Disponibile lato ChatGPT"),
-    ("Adobe Acrobat", "Installato", "Disponibile lato ChatGPT"),
-    ("Google Calendar", "Installato", "Disponibile lato ChatGPT"),
-    ("Google Contacts", "Installato", "Disponibile lato ChatGPT"),
-    ("MCP Server For WordPress", "Non installato", "Installazione non autorizzata; nessun blocco per le altre integrazioni"),
+    ("Gmail", "Installato", "Connettore ChatGPT disponibile"),
+    ("Google Drive", "Installato", "Drive/Docs/Sheets/Slides disponibili"),
+    ("Google Calendar", "Installato", "Agenda e disponibilita"),
+    ("Google Contacts", "Installato", "Risoluzione contatti e destinatari"),
+    ("GitHub", "Installato", "Repository, CI, workflow e modifiche codice"),
+    ("Airtable", "Installato", "CRM FinancePlus collegabile e gestibile"),
+    ("Render", "Installato", "Deploy, servizi, log e variabili ambiente"),
+    ("Supabase", "Installato", "PostgreSQL, migrazioni, Edge Functions"),
+    ("Neon", "Installato", "PostgreSQL serverless e gestione database"),
+    ("CData Connect AI", "Installato / OK", "Test 07/09/2026 riuscito: cataloghi restituiti"),
+    ("Data Analytics", "Installato", "Analisi dati prodotto/business"),
+    ("Adobe", "Installato", "Creative Cloud e documenti"),
+    ("Adobe Acrobat", "Installato", "PDF, OCR, conversioni e redazione"),
+    ("Adobe Express", "Installato", "Materiali grafici e template"),
+    ("OpenAI Developers", "Installato", "API OpenAI, Agents SDK e Apps"),
+    ("Process Documentation AI", "Installato", "SOP e procedure operative"),
+    ("GSC Wizard", "Installato", "Search Console e GA4; connessione account da verificare se usata"),
+    ("WordPress.com", "Installato", "Gestione sito WordPress.com"),
+    ("Windsor.ai", "Installato", "Connettori marketing e business data"),
+    ("Spreadsheets", "Installato di default", "Fogli di calcolo e analisi tabellari"),
 ]
 plugins_df = pd.DataFrame(plugin_rows, columns=["Plugin", "Stato", "Nota"])
 st.dataframe(plugins_df, use_container_width=True, hide_index=True)
-st.caption("Registro informativo aggiornato al 06/09/2026; i plugin ChatGPT non sono interrogabili direttamente dal runtime Streamlit.")
+st.caption("Registro plugin aggiornato al 07/09/2026. Lo stato 'Installato' riguarda ChatGPT; i Secrets del runtime FinancePlus restano separati.")
+
+st.subheader("Plugin consigliati da valutare")
+recommended_rows = [
+    ("AIR Credit Intelligence", "PRIORITA ALTA", "Non installato", "Scoring/credit intelligence, driver di rischio e scenari forward-looking"),
+    ("D&B Finance Analytics", "PRIORITA ALTA se licenziato", "Non installato", "Dati D&B, rischio commerciale, limiti di credito e monitoraggio portafoglio; richiede licenza"),
+    ("Photon Commerce", "OPZIONALE", "Non installato", "Secondo motore per estrazione strutturata di fatture/ricevute; utile come controllo incrociato"),
+]
+recommended_df = pd.DataFrame(recommended_rows, columns=["Plugin", "Priorita", "Stato", "Perche utile a FinancePlus"])
+st.dataframe(recommended_df, use_container_width=True, hide_index=True)
+st.caption("Scelta consigliata: installare prima AIR Credit Intelligence; D&B solo con licenza; Photon solo se serve ridondanza OCR/documentale.")
+
+st.subheader("Problemi GitHub Actions rilevati — cause certe")
+workflow_rows = [
+    ("Aruba Archive", "BLOCCATO CONFIGURAZIONE", "ARUBA_D_DANGELO_PASSWORD e ARUBA_PRATICHE_PASSWORD assenti nei GitHub Actions Secrets; nel run risultavano vuoti anche AIRTABLE_TOKEN/AIRTABLE_BASE_ID e Google runtime secrets."),
+    ("Drive Classification Sync", "BLOCCATO CONFIGURAZIONE", "FINANCEPLUS_DRIVE_LABEL_MAP_JSON assente/non valido; nel run risultavano vuoti anche Airtable e Google OAuth/profile secrets."),
+]
+workflow_df = pd.DataFrame(workflow_rows, columns=["Workflow", "Stato", "Causa verificata"])
+st.dataframe(workflow_df, use_container_width=True, hide_index=True)
+st.warning("Questi due errori non sono bug del codice Python: richiedono il completamento dei GitHub Actions Secrets. Le password/token non devono essere salvati nel repository.")
 
 st.subheader("Priorita operative")
 st.markdown(
     """
-1. Completare i Secrets runtime mancanti senza salvarli nel repository.
-2. Portare Gmail/Drive e Aruba a test end-to-end reale.
-3. Verificare l'Event API e rimuovere eventuali risposte 5xx.
-4. Riattivare GSC Wizard se serve l'analisi Search Console.
-5. Riprovare CData Connect AI dopo verifica del servizio/account.
+1. Inserire nei GitHub Actions Secrets le due password Aruba e rieseguire `FinancePlus automatic Aruba archive`.
+2. Configurare `FINANCEPLUS_DRIVE_LABEL_MAP_JSON` e i Secrets Google/Airtable richiesti dal Drive sync, poi verificare il marker `DRIVE_RECONCILIATION_OK`.
+3. Mantenere Airtable come CRM canonico; usare Supabase/Neon come estensione solo con una migrazione deliberata.
+4. Installare AIR Credit Intelligence come primo plugin creditizio aggiuntivo; valutare D&B soltanto se disponibile la licenza.
+5. Conservare un solo ramo applicativo: FINANCE_PLUS_UNICO V_1.1 / FINANCE_PLUS_GOLD_GENERALE.
 """
 )
 
