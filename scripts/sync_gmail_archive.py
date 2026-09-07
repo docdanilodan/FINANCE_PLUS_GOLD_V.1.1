@@ -16,15 +16,20 @@ def _drive_folder_for_profile(profile: str) -> str | None:
     ).strip() or None
 
 
+def _required(name: str) -> bool:
+    return bool(os.getenv(name, "").strip())
+
+
 def main() -> int:
-    if not os.getenv("AIRTABLE_TOKEN", "").strip():
-        print("ARCHIVE_SKIPPED missing environment secret: AIRTABLE_TOKEN")
-        return 0
+    missing = [name for name in ("AIRTABLE_TOKEN", "AIRTABLE_BASE_ID") if not _required(name)]
+    if missing:
+        print(f"ARCHIVE_BLOCKED missing environment secret(s): {', '.join(missing)}")
+        return 2
 
     profiles = discover_google_profiles()
     if not profiles:
-        print("ARCHIVE_SKIPPED no Google OAuth profiles configured")
-        return 0
+        print("ARCHIVE_BLOCKED no Google OAuth profiles configured")
+        return 2
 
     query = os.getenv(
         "FINANCEPLUS_GMAIL_QUERY",
@@ -36,25 +41,46 @@ def main() -> int:
         max_messages = 100
 
     results: dict[str, dict] = {}
+    attempted = 0
+    failures = 0
     for profile in profiles:
         env_name = token_env_name(profile)
-        if not os.getenv(env_name, "").strip():
-            results[profile] = {"status": "skipped", "reason": f"{env_name} non configurato"}
+        if not _required(env_name):
+            results[profile] = {"status": "blocked", "reason": f"{env_name} non configurato"}
+            failures += 1
             continue
+
+        drive_folder = _drive_folder_for_profile(profile)
+        if not drive_folder:
+            results[profile] = {"status": "blocked", "reason": "Google Drive folder non configurata"}
+            failures += 1
+            continue
+
+        attempted += 1
         try:
             results[profile] = sync_gmail_attachments(
                 query=query,
-                drive_folder_id=_drive_folder_for_profile(profile),
+                drive_folder_id=drive_folder,
                 max_messages=max_messages,
                 profile=profile,
             )
         except Exception as exc:
+            failures += 1
             results[profile] = {
                 "status": "error",
                 "error": f"{type(exc).__name__}: {exc}",
             }
 
     print(json.dumps({"profiles": profiles, "results": results}, ensure_ascii=False, indent=2, default=str))
+
+    if attempted == 0:
+        print("ARCHIVE_BLOCKED no fully configured Google profile")
+        return 2
+    if failures:
+        print(f"ARCHIVE_PARTIAL_FAILURE failures={failures}")
+        return 1
+
+    print(f"ARCHIVE_OK profiles={attempted}")
     return 0
 
 
