@@ -128,7 +128,12 @@ def health() -> dict:
         "webhook_secret_configured": bool(os.getenv("FINANCEPLUS_WEBHOOK_SECRET")),
         "airtable_configured": bool(os.getenv("AIRTABLE_TOKEN")),
         "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
+        "openai_cost_dashboard_configured": bool(os.getenv("OPENAI_ADMIN_KEY")),
         "cdata_configured": bool(os.getenv("CDATA_USER") and os.getenv("CDATA_PAT")),
+        "cdata_management_ready": bool(
+            os.getenv("CDATA_MANAGEMENT_API_URL") and os.getenv("CDATA_ADMIN_PAT")
+        ),
+        "cdata_siem_provider": os.getenv("CDATA_SIEM_PROVIDER", "").strip().lower(),
         "adobe_pdf_services_configured": bool(
             os.getenv("PDF_SERVICES_CLIENT_ID") and os.getenv("PDF_SERVICES_CLIENT_SECRET")
         ),
@@ -140,6 +145,7 @@ def health() -> dict:
         "drive_cse_policy": True,
         "drive_label_policy": True,
         "airtable_mcp_governance": True,
+        "airtable_webhook_queue_client": True,
         "responses_api_only": True,
     }
 

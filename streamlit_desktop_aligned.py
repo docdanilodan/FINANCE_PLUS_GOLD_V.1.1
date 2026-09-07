@@ -4,7 +4,7 @@ import hashlib
 import io
 import os
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import pandas as pd
@@ -23,6 +23,7 @@ from modules.pdf_dossier import build_pdf as build_dossier_pdf
 from services.airtable_adapter import AirtableGold, DEFAULT_BASE_ID
 from services.drive_preview import generic_drive_link, protected_drive_preview
 from services.gmail_drive_pipeline import sync_gmail_attachments
+from services.openai_usage import OpenAIUsageClient, flatten_costs, load_project_labels
 from FinancePlus_Airtable.client_fascicolo import build_client_fascicolo_pdf, safe_fascicolo_filename
 
 APP_NAME = "FINANCE_PLUS_UNICO V_1.1"
@@ -432,11 +433,103 @@ elif page == MANDATES:
     if history: df = pd.DataFrame(history); st.dataframe(df, use_container_width=True, hide_index=True); st.download_button("Storico CSV", df.to_csv(index=False).encode(), "Mandati_F_P_UNICO.csv", "text/csv")
 
 elif page == SETTINGS:
-    st.subheader("Impostazioni, Connessioni e Sicurezza"); drive_folder = secret("GOOGLE_DRIVE_FOLDER_ID"); aruba_dd = bool(secret("ARUBA_D_DANGELO_PASSWORD")); aruba_pratiche = bool(secret("ARUBA_PRATICHE_PASSWORD")); a, b, c, d = st.columns(4); a.metric("Airtable", "OK" if DB else "DA CONFIGURARE"); b.metric("Gmail/Drive", "OK" if PROFILES else "DA CONFIGURARE"); c.metric("Aruba D.Dangelo", "OK" if aruba_dd else "DA CONFIGURARE"); d.metric("Aruba Pratiche", "OK" if aruba_pratiche else "DA CONFIGURARE"); tabs = st.tabs(["Connessioni", "Secrets richiesti", "Desktop Edition"])
+    st.subheader("Impostazioni, Connessioni e Sicurezza")
+    drive_folder = secret("GOOGLE_DRIVE_FOLDER_ID")
+    aruba_dd = bool(secret("ARUBA_D_DANGELO_PASSWORD"))
+    aruba_pratiche = bool(secret("ARUBA_PRATICHE_PASSWORD"))
+    openai_admin = bool(secret("OPENAI_ADMIN_KEY"))
+    cdata_query = bool(secret("CDATA_USER") and secret("CDATA_PAT"))
+    a, b, c, d = st.columns(4)
+    a.metric("Airtable", "OK" if DB else "DA CONFIGURARE")
+    b.metric("Gmail/Drive", "OK" if PROFILES else "DA CONFIGURARE")
+    c.metric("Costi OpenAI", "OK" if openai_admin else "DA CONFIGURARE")
+    d.metric("CData", "OK" if cdata_query else "DA CONFIGURARE")
+    tabs = st.tabs(["Connessioni", "Costi AI", "Governance 2026", "Secrets richiesti", "Desktop Edition"])
     with tabs[0]:
-        rows = [{"Servizio": "Airtable", "Stato": "OK" if DB else "Da configurare", "Dettaglio": secret("AIRTABLE_BASE_ID", DEFAULT_BASE_ID)}, {"Servizio": "Google Drive", "Stato": "OK" if drive_folder else "Da configurare", "Dettaglio": drive_folder or "GOOGLE_DRIVE_FOLDER_ID"}, {"Servizio": "Gmail OAuth", "Stato": "OK" if PROFILES else "Da configurare", "Dettaglio": ", ".join(PROFILES) if PROFILES else "GOOGLE_OAUTH_TOKEN_JSON"}, {"Servizio": "Aruba D.Dangelo", "Stato": "OK" if aruba_dd else "Da configurare", "Dettaglio": "imaps.aruba.it:993 SSL"}, {"Servizio": "Aruba Pratiche", "Stato": "OK" if aruba_pratiche else "Da configurare", "Dettaglio": "imaps.aruba.it:993 SSL"}]; st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True); st.warning("Password, token e OAuth non devono essere salvati nel codice GitHub.")
-    with tabs[1]: st.code("AIRTABLE_TOKEN = \"...\"\nAIRTABLE_BASE_ID = \"appoNJtS64JIcZUhT\"\nGOOGLE_OAUTH_TOKEN_JSON = \"...\"\nGOOGLE_DRIVE_FOLDER_ID = \"...\"\nARUBA_D_DANGELO_EMAIL = \"d.dangelo@financeplus.tech\"\nARUBA_D_DANGELO_PASSWORD = \"...\"\nARUBA_PRATICHE_EMAIL = \"pratiche@financeplus.tech\"\nARUBA_PRATICHE_PASSWORD = \"...\"", language="toml")
-    with tabs[2]: st.markdown("**Desktop Edition:** `desktop/FINANCEPLUS_DESKTOP_V1_0.py`"); st.markdown("Installazione Windows: `desktop/INSTALLA_E_AVVIA_WINDOWS.bat`"); st.markdown("Creazione EXE: `desktop/CREA_EXE_WINDOWS.bat`"); st.info("La Desktop Edition usa SQLite locale e puo funzionare anche senza Airtable/Drive. La web app usa il CRM Airtable come fonte operativa.")
+        rows = [
+            {"Servizio": "Airtable", "Stato": "OK" if DB else "Da configurare", "Dettaglio": secret("AIRTABLE_BASE_ID", DEFAULT_BASE_ID)},
+            {"Servizio": "Google Drive", "Stato": "OK" if drive_folder else "Da configurare", "Dettaglio": drive_folder or "GOOGLE_DRIVE_FOLDER_ID"},
+            {"Servizio": "Gmail OAuth", "Stato": "OK" if PROFILES else "Da configurare", "Dettaglio": ", ".join(PROFILES) if PROFILES else "GOOGLE_OAUTH_TOKEN_JSON"},
+            {"Servizio": "Aruba D.Dangelo", "Stato": "OK" if aruba_dd else "Da configurare", "Dettaglio": "imaps.aruba.it:993 SSL"},
+            {"Servizio": "Aruba Pratiche", "Stato": "OK" if aruba_pratiche else "Da configurare", "Dettaglio": "imaps.aruba.it:993 SSL"},
+            {"Servizio": "OpenAI costi", "Stato": "OK" if openai_admin else "Da configurare", "Dettaglio": "Lettura amministrativa, nessuna modifica"},
+            {"Servizio": "CData query", "Stato": "OK" if cdata_query else "Da configurare", "Dettaglio": "SELECT-only"},
+        ]
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.warning("Password, token e OAuth non devono essere salvati nel codice GitHub.")
+    with tabs[1]:
+        st.caption("Costi organizzazione OpenAI raggruppati per progetto e voce. Le chiavi non vengono mostrate o salvate.")
+        if not openai_admin:
+            st.info("Aggiungi OPENAI_ADMIN_KEY ai Secrets del deployment per attivare il cruscotto costi.")
+        c1, c2 = st.columns(2)
+        start_day = c1.date_input("Dal", value=date.today() - timedelta(days=30), key="openai_cost_start")
+        end_day = c2.date_input("Al", value=date.today(), key="openai_cost_end")
+        if st.button("Aggiorna costi OpenAI", disabled=not openai_admin, type="primary"):
+            try:
+                client = OpenAIUsageClient(
+                    admin_key=secret("OPENAI_ADMIN_KEY"),
+                    base_url=secret("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+                )
+                buckets = client.costs(start=start_day, end=end_day + timedelta(days=1))
+                rows = flatten_costs(
+                    buckets,
+                    load_project_labels(secret("FINANCEPLUS_OPENAI_PROJECT_LABELS_JSON", "{}")),
+                )
+                costs = pd.DataFrame(rows)
+                if costs.empty:
+                    st.info("Nessun costo disponibile nell'intervallo selezionato.")
+                else:
+                    st.metric("Costo totale", f"USD {costs['Importo'].sum():,.2f}")
+                    st.dataframe(costs, use_container_width=True, hide_index=True)
+                    st.download_button(
+                        "Scarica costi CSV",
+                        costs.to_csv(index=False).encode("utf-8"),
+                        "FinancePlus_Costi_OpenAI.csv",
+                        "text/csv",
+                    )
+            except Exception as exc:
+                st.error(f"Lettura costi non riuscita: {exc}")
+    with tabs[2]:
+        cdata_management = bool(secret("CDATA_MANAGEMENT_API_URL") and secret("CDATA_ADMIN_PAT"))
+        cdata_siem = secret("CDATA_SIEM_PROVIDER").lower() in {"datadog", "splunk"}
+        drive_labels = bool(PROFILES and secret("FINANCEPLUS_DRIVE_LABEL_MAP_JSON"))
+        controls = [
+            {"Controllo": "Drive label + policy AI", "Stato": "Pronto" if drive_labels else "Da configurare", "Regola": "Una label puo solo aumentare la sensibilita"},
+            {"Controllo": "Airtable MCP", "Stato": "Protetto", "Regola": "Write e modifiche strutturali richiedono approvazione"},
+            {"Controllo": "Airtable webhook queue", "Stato": "Pronto" if DB else "Da configurare", "Regola": "Cursor, paginazione e limite 50 payload"},
+            {"Controllo": "CData Management API", "Stato": "Pronto" if cdata_management else "Pilot da configurare", "Regola": "Solo readiness finche endpoint tenant e PAT admin non sono presenti"},
+            {"Controllo": "CData SIEM", "Stato": "Pronto" if cdata_siem else "Pilot da configurare", "Regola": "Provider ammessi: Datadog o Splunk"},
+            {"Controllo": "Workspace Studio Mail Agent", "Stato": "Pilot" if secret("FINANCEPLUS_WORKSPACE_STUDIO_PILOT").lower() == "true" else "Disattivo", "Regola": "Invio esterno con approvazione umana"},
+            {"Controllo": "Acrobat Analyzer", "Stato": "Pilot" if secret("FINANCEPLUS_ACROBAT_ANALYZER_PILOT").lower() == "true" else "Disattivo", "Regola": "Originale immutabile e confronto estrazioni"},
+        ]
+        st.dataframe(pd.DataFrame(controls), use_container_width=True, hide_index=True)
+        st.info("Management API CData, Workspace Studio e Acrobat Analyzer restano in pilot fino alla disponibilita di licenza, endpoint e credenziali del tenant.")
+    with tabs[3]:
+        st.code(
+            "AIRTABLE_TOKEN = \"...\"\n"
+            "AIRTABLE_BASE_ID = \"appoNJtS64JIcZUhT\"\n"
+            "GOOGLE_OAUTH_TOKEN_JSON = \"...\"\n"
+            "GOOGLE_DRIVE_FOLDER_ID = \"...\"\n"
+            "FINANCEPLUS_DRIVE_LABEL_MAP_JSON = \"{}\"\n"
+            "OPENAI_API_KEY = \"...\"\n"
+            "OPENAI_ADMIN_KEY = \"...\"\n"
+            "FINANCEPLUS_OPENAI_PROJECT_LABELS_JSON = \"{\\\"proj_id\\\":\\\"DOCUMENTI\\\"}\"\n"
+            "CDATA_USER = \"...\"\n"
+            "CDATA_PAT = \"...\"\n"
+            "CDATA_MANAGEMENT_API_URL = \"...\"\n"
+            "CDATA_ADMIN_PAT = \"...\"\n"
+            "CDATA_SIEM_PROVIDER = \"datadog\"\n"
+            "ARUBA_D_DANGELO_EMAIL = \"d.dangelo@financeplus.tech\"\n"
+            "ARUBA_D_DANGELO_PASSWORD = \"...\"\n"
+            "ARUBA_PRATICHE_EMAIL = \"pratiche@financeplus.tech\"\n"
+            "ARUBA_PRATICHE_PASSWORD = \"...\"",
+            language="toml",
+        )
+    with tabs[4]:
+        st.markdown("**Desktop Edition:** `desktop/FINANCEPLUS_DESKTOP_V1_0.py`")
+        st.markdown("Installazione Windows: `desktop/INSTALLA_E_AVVIA_WINDOWS.bat`")
+        st.markdown("Creazione EXE: `desktop/CREA_EXE_WINDOWS.bat`")
+        st.info("La Desktop Edition usa SQLite locale e puo funzionare anche senza Airtable/Drive. La web app usa il CRM Airtable come fonte operativa.")
 
 st.divider()
 st.caption("FINANCE_PLUS_UNICO V_1.1 - Web/Desktop aligned - Data Quality Gate - nessun dato finanziario inventato")

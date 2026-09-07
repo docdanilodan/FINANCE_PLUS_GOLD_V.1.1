@@ -6,6 +6,8 @@ from document_ai import DocumentResult
 from scripts import sync_drive_classification as drive_sync
 from services import gmail_drive_pipeline_v2 as gmail_v2
 from services.airtable_mcp_policy import evaluate_airtable_mcp_action
+from services.airtable_webhooks import AirtableWebhookClient
+from services.cdata_gateway import CDataGateway
 from services.drive_classification import resolve_drive_classification
 from services.pdf_extraction import ExtractionResult, _cloud_allowed, extract_document_content
 
@@ -19,6 +21,46 @@ def test_archive_workflows_expose_repository_root_to_python() -> None:
             encoding="utf-8"
         )
         assert "PYTHONPATH: ${{ github.workspace }}" in workflow
+
+
+def test_unconfigured_scheduled_integrations_exit_cleanly_before_install() -> None:
+    repository_root = Path(__file__).resolve().parents[1]
+    for workflow_name in ("gmail_archive.yml", "aruba_archive.yml", "drive_classification_sync.yml"):
+        workflow = (repository_root / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+        assert "id: config" in workflow
+        assert "configured=false" in workflow
+        assert "if: steps.config.outputs.configured == 'true'" in workflow
+
+
+def test_gmail_event_bridge_is_retrying_and_non_blocking() -> None:
+    repository_root = Path(__file__).resolve().parents[1]
+    workflow = (repository_root / ".github" / "workflows" / "gmail_archive.yml").read_text(encoding="utf-8")
+    assert "for attempt in 1 2 3" in workflow
+    assert "Telemetry failure does not invalidate the Gmail archive" in workflow
+    assert workflow.rstrip().endswith("exit 0")
+
+
+def test_airtable_webhook_id_and_cursor_are_validated():
+    assert AirtableWebhookClient._webhook_id("ach00000000000000") == "ach00000000000000"
+    try:
+        AirtableWebhookClient._webhook_id("../records")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Webhook path traversal must be rejected")
+
+
+def test_cdata_healthcheck_exposes_readiness_without_pat_values(monkeypatch):
+    monkeypatch.setenv("CDATA_MANAGEMENT_API_URL", "https://tenant.example/management")
+    monkeypatch.setenv("CDATA_ADMIN_PAT", "admin-secret")
+    monkeypatch.setenv("CDATA_SIEM_PROVIDER", "datadog")
+    monkeypatch.setenv("CDATA_CUSTOM_INSTRUCTIONS", "Use approved finance views")
+    status = CDataGateway(user="reader", pat="query-secret", base_url="https://tenant.example").healthcheck()
+    assert status["management_api_ready"] is True
+    assert status["siem_provider"] == "datadog"
+    assert status["custom_instructions_ready"] is True
+    assert "admin-secret" not in str(status)
+    assert "query-secret" not in str(status)
 
 
 class _Execute:

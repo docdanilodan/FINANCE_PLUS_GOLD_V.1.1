@@ -53,4 +53,13 @@ class CDataGateway:
         return {
             "configured": bool(self.user and self.pat),
             "base_url": self.base_url,
+            "management_api_ready": bool(
+                os.getenv("CDATA_MANAGEMENT_API_URL", "").strip()
+                and os.getenv("CDATA_ADMIN_PAT", "").strip()
+            ),
+            "siem_provider": os.getenv("CDATA_SIEM_PROVIDER", "").strip().lower(),
+            "custom_instructions_ready": bool(
+                os.getenv("CDATA_CUSTOM_INSTRUCTIONS", "").strip()
+            ),
+            "management_mode": "readiness-only",
         }
