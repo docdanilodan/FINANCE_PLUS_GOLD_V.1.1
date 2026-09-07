@@ -54,6 +54,7 @@ jobs:
         shell: bash
         run: |
           oidc_token=$(curl --fail --show-error --silent \
+            --retry 3 --retry-delay 3 --retry-all-errors --max-time 30 \
             -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=financeplus-events-v2" | jq -r '.value')
           test -n "$oidc_token" && test "$oidc_token" != "null"
@@ -66,6 +67,7 @@ jobs:
             '{external_id:$external_id,event_type:$event_type,detail:$detail,correlation_id:$correlation_id}')
 
           curl --fail --show-error --silent \
+            --retry 5 --retry-delay 5 --retry-all-errors --max-time 30 \
             -X POST "$FINANCEPLUS_EVENT_URL" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $oidc_token" \
