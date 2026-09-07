@@ -163,21 +163,23 @@ st.caption("Scelta consigliata: installare prima AIR Credit Intelligence; D&B so
 
 st.subheader("Problemi GitHub Actions rilevati — cause certe")
 workflow_rows = [
+    ("Gmail Archive", "BLOCCATO CONFIGURAZIONE + API", "AIRTABLE_TOKEN/AIRTABLE_BASE_ID e Google OAuth/Drive secrets risultano assenti nel runner; il run precedente emetteva inoltre un evento 'completed' dopo lo skip e riceveva HTTP 503 dall'Event API. Il workflow e stato corretto: ora lo skip per configurazione restituisce errore e l'evento viene inviato solo dopo una sincronizzazione riuscita, con retry sui 5xx."),
     ("Aruba Archive", "BLOCCATO CONFIGURAZIONE", "ARUBA_D_DANGELO_PASSWORD e ARUBA_PRATICHE_PASSWORD assenti nei GitHub Actions Secrets; nel run risultavano vuoti anche AIRTABLE_TOKEN/AIRTABLE_BASE_ID e Google runtime secrets."),
     ("Drive Classification Sync", "BLOCCATO CONFIGURAZIONE", "FINANCEPLUS_DRIVE_LABEL_MAP_JSON assente/non valido; nel run risultavano vuoti anche Airtable e Google OAuth/profile secrets."),
 ]
 workflow_df = pd.DataFrame(workflow_rows, columns=["Workflow", "Stato", "Causa verificata"])
 st.dataframe(workflow_df, use_container_width=True, hide_index=True)
-st.warning("Questi due errori non sono bug del codice Python: richiedono il completamento dei GitHub Actions Secrets. Le password/token non devono essere salvati nel repository.")
+st.warning("Le correzioni di flusso sono nel codice, ma i workflow restano bloccati finche i GitHub Actions Secrets richiesti non vengono configurati. Password e token non devono essere salvati nel repository.")
 
 st.subheader("Priorita operative")
 st.markdown(
     """
-1. Inserire nei GitHub Actions Secrets le due password Aruba e rieseguire `FinancePlus automatic Aruba archive`.
-2. Configurare `FINANCEPLUS_DRIVE_LABEL_MAP_JSON` e i Secrets Google/Airtable richiesti dal Drive sync, poi verificare il marker `DRIVE_RECONCILIATION_OK`.
-3. Mantenere Airtable come CRM canonico; usare Supabase/Neon come estensione solo con una migrazione deliberata.
-4. Installare AIR Credit Intelligence come primo plugin creditizio aggiuntivo; valutare D&B soltanto se disponibile la licenza.
-5. Conservare un solo ramo applicativo: FINANCE_PLUS_UNICO V_1.1 / FINANCE_PLUS_GOLD_GENERALE.
+1. Configurare `AIRTABLE_TOKEN`, `AIRTABLE_BASE_ID`, i profili Google OAuth e le cartelle Drive nei GitHub Actions Secrets, quindi rieseguire `FinancePlus automatic Gmail archive`.
+2. Inserire nei GitHub Actions Secrets le due password Aruba e rieseguire `FinancePlus automatic Aruba archive`.
+3. Configurare `FINANCEPLUS_DRIVE_LABEL_MAP_JSON` e i Secrets Google/Airtable richiesti dal Drive sync, poi verificare il marker `DRIVE_RECONCILIATION_OK`.
+4. Mantenere Airtable come CRM canonico; usare Supabase/Neon come estensione solo con una migrazione deliberata.
+5. Installare AIR Credit Intelligence come primo plugin creditizio aggiuntivo; valutare D&B soltanto se disponibile la licenza.
+6. Conservare un solo ramo applicativo: FINANCE_PLUS_UNICO V_1.1 / FINANCE_PLUS_GOLD_GENERALE.
 """
 )
 
