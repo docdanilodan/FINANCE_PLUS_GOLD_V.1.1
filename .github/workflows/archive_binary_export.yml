@@ -1,0 +1,28 @@
+name: FinancePlus binary source archive export
+
+on:
+  push:
+    branches:
+      - archive-export-2026-09-11-artifact
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Build source ZIP
+        run: |
+          rm -rf .git
+          zip -r FINANCE_PLUS_GOLD_V1_1_SOURCE_ae53f82.zip . -x 'FINANCE_PLUS_GOLD_V1_1_SOURCE_ae53f82.zip'
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: financeplus-source-snapshot-ae53f82
+          path: FINANCE_PLUS_GOLD_V1_1_SOURCE_ae53f82.zip
+          if-no-files-found: error
+          retention-days: 7
