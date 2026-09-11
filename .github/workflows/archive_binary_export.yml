@@ -13,16 +13,18 @@ jobs:
   export-source:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout exact main snapshot
         uses: actions/checkout@v4
-      - name: Build source ZIP
+        with:
+          ref: ae53f82a58e7a9a3cdfa80b7b53dd3c05ced676b
+      - name: Build exact source ZIP
         run: |
           rm -rf .git
-          zip -r FINANCE_PLUS_GOLD_V1_1_SOURCE_ae53f82.zip . -x 'FINANCE_PLUS_GOLD_V1_1_SOURCE_ae53f82.zip'
-      - name: Upload source snapshot
+          zip -r FINANCE_PLUS_GOLD_V1_1_SOURCE_MAIN_ae53f82.zip . -x 'FINANCE_PLUS_GOLD_V1_1_SOURCE_MAIN_ae53f82.zip'
+      - name: Upload exact source snapshot
         uses: actions/upload-artifact@v4
         with:
-          name: financeplus-source-snapshot-ae53f82
-          path: FINANCE_PLUS_GOLD_V1_1_SOURCE_ae53f82.zip
+          name: financeplus-source-main-ae53f82
+          path: FINANCE_PLUS_GOLD_V1_1_SOURCE_MAIN_ae53f82.zip
           if-no-files-found: error
           retention-days: 7
