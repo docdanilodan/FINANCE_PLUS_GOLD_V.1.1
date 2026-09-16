@@ -2,7 +2,6 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import asdict
 from .models import ParsedCR, Analysis, AuditResult
-
 def _rating(score:int):
     if score>=90:return "AAA",0.25
     if score>=80:return "AA",0.50
@@ -10,7 +9,6 @@ def _rating(score:int):
     if score>=60:return "BBB",2.00
     if score>=45:return "BB",5.00
     return "B/D",10.00
-
 def analyze(parsed:ParsedCR)->Analysis:
     errors=[]; warnings=list(parsed.warnings); valid_rows=[]
     for r in parsed.rows:
