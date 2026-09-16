@@ -14,4 +14,56 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt pytest
       - run: python -m compileall -q app.py financeplus financeplus_cr_engine
-      - run: pytest -q
+      - name: Legacy - actions audit
+        continue-on-error: true
+        run: pytest -q tests/test_actions_audit.py
+      - name: Legacy - CR 2026
+        continue-on-error: true
+        run: pytest -q tests/test_cr_2026_2_corretto.py
+      - name: Legacy - document router
+        continue-on-error: true
+        run: pytest -q tests/test_document_router.py
+      - name: Legacy - drive preview
+        continue-on-error: true
+        run: pytest -q tests/test_drive_preview.py
+      - name: Legacy - event orchestrator
+        continue-on-error: true
+        run: pytest -q tests/test_event_orchestrator.py
+      - name: Legacy - gold baseline
+        continue-on-error: true
+        run: pytest -q tests/test_gold.py
+      - name: Legacy - google profiles
+        continue-on-error: true
+        run: pytest -q tests/test_google_profiles.py
+      - name: Legacy - integration governance
+        continue-on-error: true
+        run: pytest -q tests/test_integration_governance.py
+      - name: Legacy - photon commerce
+        continue-on-error: true
+        run: pytest -q tests/test_photon_commerce.py
+      - name: MASTER - business plan
+        continue-on-error: true
+        run: pytest -q tests/test_master_business_plan.py
+      - name: MASTER - cashflow
+        continue-on-error: true
+        run: pytest -q tests/test_master_cashflow.py
+      - name: MASTER - DB
+        continue-on-error: true
+        run: pytest -q tests/test_master_db.py
+      - name: MASTER - documents
+        continue-on-error: true
+        run: pytest -q tests/test_master_documents.py
+      - name: MASTER - finance
+        continue-on-error: true
+        run: pytest -q tests/test_master_finance.py
+      - name: MASTER - RBAC
+        continue-on-error: true
+        run: pytest -q tests/test_master_rbac.py
+      - name: Stage2 - real regressions
+        continue-on-error: true
+        run: pytest -q tests/test_stage2_real_regressions.py
+      - name: MASTER - Streamlit sections
+        continue-on-error: true
+        run: pytest -q tests/test_streamlit_sections.py
+      - name: Full regression gate
+        run: pytest -q
