@@ -1,0 +1,37 @@
+{
+  "actor": "docdanilodan",
+  "archived_at": "2026-09-16T13:04:01.455712+00:00",
+  "conclusion": "failure",
+  "created_at": "2026-09-16T13:02:28Z",
+  "event": "pull_request",
+  "head_branch": "app-nuova-sett-ia-00-master",
+  "head_sha": "d29e1757bf7599f005e763da27d992a97e7f8bad",
+  "html_url": "https://github.com/docdanilodan/FINANCE_PLUS_GOLD_V.1.1/actions/runs/35099401833",
+  "jobs": [
+    {
+      "completed_at": "2026-09-16T13:03:13Z",
+      "conclusion": "failure",
+      "id": 104804702036,
+      "name": "test",
+      "started_at": "2026-09-16T13:02:31Z",
+      "status": "completed",
+      "steps": [
+        {
+          "conclusion": "failure",
+          "name": "Compile unified app and integrations",
+          "number": 5,
+          "status": "completed"
+        }
+      ]
+    }
+  ],
+  "repository": "docdanilodan/FINANCE_PLUS_GOLD_V.1.1",
+  "run_attempt": 1,
+  "run_id": 35099401833,
+  "run_number": 114,
+  "schema_version": 1,
+  "status": "completed",
+  "updated_at": "2026-09-16T13:03:14Z",
+  "workflow_id": 344309669,
+  "workflow_name": "FinancePlus unified CI"
+}
