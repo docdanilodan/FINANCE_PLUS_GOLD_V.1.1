@@ -91,7 +91,11 @@ def test_cr_pdf_output_is_readable(tmp_path: Path):
     generate_pdf(analysis, out)
     from pypdf import PdfReader
     reader = PdfReader(str(out))
-    assert len(reader.pages) >= 4
+    # Canonical historical generator parity: 45-page professional CR report.
+    assert len(reader.pages) == 45
     text = "\n".join((p.extract_text() or "") for p in reader.pages)
-    assert "FINANCEPLUS" in text
+    # The canonical report brands itself through title + financeplus.tech footer;
+    # do not require a non-existent contiguous uppercase FINANCEPLUS token.
+    assert "ANALISI" in text and "CR" in text and "AVANZATA" in text
+    assert "www.financeplus.tech" in text
     assert "TEST INDUSTRIA S.R.L." in text
