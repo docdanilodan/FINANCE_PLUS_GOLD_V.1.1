@@ -5,12 +5,21 @@ from sqlalchemy.orm import sessionmaker
 from financeplus.config import settings
 from .models import Base
 
-engine_kwargs: dict = {"future": True, "pool_pre_ping": True}
-if settings.database_url.startswith("sqlite"):
-    engine_kwargs["connect_args"] = {"check_same_thread": False}
-engine = create_engine(settings.database_url, **engine_kwargs)
 
-if settings.database_url.startswith("sqlite"):
+def _sqlalchemy_database_url(url: str) -> str:
+    """Normalize PostgreSQL URLs to the installed psycopg 3 SQLAlchemy driver."""
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
+
+
+database_url = _sqlalchemy_database_url(settings.database_url)
+engine_kwargs: dict = {"future": True, "pool_pre_ping": True}
+if database_url.startswith("sqlite"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+engine = create_engine(database_url, **engine_kwargs)
+
+if database_url.startswith("sqlite"):
     @event.listens_for(engine, "connect")
     def _sqlite_fk(dbapi_connection, connection_record):  # pragma: no cover
         cursor = dbapi_connection.cursor()
