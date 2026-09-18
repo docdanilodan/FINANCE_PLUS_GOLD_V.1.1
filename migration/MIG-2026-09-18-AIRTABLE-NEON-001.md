@@ -27,7 +27,7 @@ Il branch Neon di default non è stato modificato.
 |---|---:|---:|---|
 | Clienti | 97 | 97 | verificato |
 | Pratiche | 9 | 9 | verificato |
-| Documenti | 293 | 256 | **bloccato** |
+| Documenti | 293 | 261 | **bloccato** |
 | Analisi Creditizie | 6 | 6 | verificato |
 
 Totale importi richiesti Pratiche: **EUR 5.500.000** sia in Airtable sia nello staging Neon.
@@ -38,17 +38,19 @@ Totale importi richiesti Pratiche: **EUR 5.500.000** sia in Airtable sia nello s
 - SHA-256 duplicati nello staging: **0**.
 - SHA-256 con formato non valido nello staging: **0**.
 - Checksum mismatch noti: **0**.
-- Sequence documenti riallineata a **256**.
+- Sequence documenti riallineata a **261**.
 
 ## Recupero documenti
 
-Sei documenti che in Airtable erano privi di SHA-256 sono stati recuperati tramite corrispondenza esatta su Google Drive. I file sono stati scaricati in sola lettura e l'hash SHA-256 è stato calcolato sui byte reali; nessun hash è stato derivato dal nome file.
+Sono stati recuperati **11 documenti** che in Airtable erano privi di SHA-256: 6 tramite corrispondenze esatte Google Drive e 5 tramite corrispondenze esatte nella Libreria/progetto. I file sono stati scaricati o materializzati in sola lettura e l'hash SHA-256 è stato calcolato sui byte reali; nessun hash è stato derivato dal nome file.
+
+Una `Visura POLMET.pdf` reperita in Libreria è stata esclusa perché riporta data di estrazione 31/07/2026 e non corrisponde al record sorgente del 24/04/2026.
 
 ## Review queue
 
-Restano **37 record documentali** non importati nel core:
+Restano **32 record documentali** non importati nel core:
 
-- **28** senza SHA-256 verificabile;
+- **23** senza SHA-256 verificabile;
 - **9** senza associazione univoca a Cliente 360.
 
 Sono registrati nello staging in `audit_log` con action `migration_review_required`. Nessuna associazione cliente è stata inventata.
@@ -58,7 +60,7 @@ Sono registrati nello staging in `audit_log` con action `migration_review_requir
 `migration_guard.py` restituisce **BLOCKED** per:
 
 1. asset Documenti bloccato;
-2. mismatch critico Documenti 293 → 256.
+2. mismatch critico Documenti 293 → 261.
 
 Warning: smoke test applicativo non eseguito, coerentemente con uno staging non completo.
 
@@ -68,4 +70,4 @@ Rollback immediato: Airtable resta intatto e autorevole. Lo staging Neon è un b
 
 ## Dipendenze applicative
 
-Il cutover dati deve avvenire solo dopo l'accettazione delle PR applicative #25 e #26 e dopo la riconciliazione dei 37 documenti residui. Nessun merge/cutover automatico viene eseguito da questa fase.
+Il cutover dati deve avvenire solo dopo l'accettazione delle PR applicative #25 e #26 e dopo la riconciliazione dei 32 documenti residui. Nessun merge/cutover automatico viene eseguito da questa fase.
