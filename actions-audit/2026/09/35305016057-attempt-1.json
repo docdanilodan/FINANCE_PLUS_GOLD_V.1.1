@@ -1,0 +1,30 @@
+{
+  "actor": "docdanilodan",
+  "archived_at": "2026-09-18T03:56:02.041680+00:00",
+  "conclusion": "success",
+  "created_at": "2026-09-18T03:55:31Z",
+  "event": "pull_request",
+  "head_branch": "feature/smartfplus-neon-read-shadow-20260918",
+  "head_sha": "1b0fea6b5832a6de181ffc2ec07ae10f3d109b94",
+  "html_url": "https://github.com/docdanilodan/FINANCE_PLUS_GOLD_V.1.1/actions/runs/35305016057",
+  "jobs": [
+    {
+      "completed_at": "2026-09-18T03:55:51Z",
+      "conclusion": "success",
+      "id": 105475311427,
+      "name": "notify-financeplus",
+      "started_at": "2026-09-18T03:55:34Z",
+      "status": "completed",
+      "steps": []
+    }
+  ],
+  "repository": "docdanilodan/FINANCE_PLUS_GOLD_V.1.1",
+  "run_attempt": 1,
+  "run_id": 35305016057,
+  "run_number": 60,
+  "schema_version": 1,
+  "status": "completed",
+  "updated_at": "2026-09-18T03:55:52Z",
+  "workflow_id": 346456326,
+  "workflow_name": "FinancePlus GitHub event bridge"
+}
