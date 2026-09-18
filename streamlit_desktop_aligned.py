@@ -354,7 +354,7 @@ elif page == CLIENTS:
 
 elif page == PRACTICES:
     st.subheader("Pratiche e Workflow")
-    if not DB: st.warning("Airtable non autenticato.")
+    if not DB: st.warning("Nessuna sorgente dati operativa configurata.")
     else:
         try: df = records_df(DB.list_records("pratiche", max_records=5000))
         except Exception as exc: st.error(str(exc)); df = pd.DataFrame()
@@ -370,7 +370,7 @@ elif page == PRACTICES:
 
 elif page == DOCUMENTS:
     st.subheader("Documenti e Anteprima")
-    if not DB: st.warning("Airtable non autenticato.")
+    if not DB: st.warning("Nessuna sorgente dati operativa configurata.")
     else:
         try: df = records_df(DB.list_records("documenti", max_records=5000))
         except Exception as exc: st.error(str(exc)); df = pd.DataFrame()
@@ -417,11 +417,12 @@ elif page == DOC_AI:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True); st.info("I dati non leggibili restano da verificare: nessuna ricostruzione arbitraria.")
 
 elif page == MAIL:
-    st.subheader("Email -> Document AI -> Drive -> Airtable"); st.caption("Gmail usa OAuth. Le caselle Aruba sono disponibili anche nel pannello Aruba Mail della sidebar.")
-    if not DB: st.warning("Serve AIRTABLE_TOKEN.")
+    st.subheader("Email -> Document AI -> Drive -> Airtable compatibility"); st.caption("Gmail usa OAuth. In questa fase la pipeline email continua a registrare su Airtable mentre il core Neon resta in read-shadow.")
+    mail_ready = bool(DB and DB.airtable_configured and PROFILES)
+    if not (DB and DB.airtable_configured): st.warning("Per la pipeline Gmail serve ancora AIRTABLE_TOKEN durante la fase read-shadow.")
     if not PROFILES: st.warning("Serve almeno un GOOGLE_OAUTH_TOKEN_JSON.")
     profile = st.selectbox("Profilo Google", list(PROFILES) if PROFILES else ["Non configurato"]); query = st.text_input("Query Gmail", value="has:attachment newer_than:1d -in:spam -in:trash"); folder = st.text_input("Drive folder ID", value=secret("GOOGLE_DRIVE_FOLDER_ID")); max_messages = st.slider("Messaggi massimi", 1, 200, 50)
-    if st.button("Sincronizza Gmail", type="primary", disabled=not (DB and PROFILES)):
+    if st.button("Sincronizza Gmail", type="primary", disabled=not mail_ready):
         try:
             set_google_profile(PROFILES[profile]); result = sync_gmail_attachments(query=query, drive_folder_id=folder or None, max_messages=max_messages); a, b, c, d = st.columns(4); a.metric("Messaggi", result.get("messages", 0)); b.metric("Allegati", result.get("attachments", 0)); c.metric("Caricati", result.get("uploaded", 0)); d.metric("Duplicati", result.get("duplicates", 0)); st.warning(f"Errori: {len(result['errors'])}") if result.get("errors") else st.success("Sincronizzazione completata.")
         except Exception as exc: st.error(f"Sincronizzazione non riuscita: {exc}")
