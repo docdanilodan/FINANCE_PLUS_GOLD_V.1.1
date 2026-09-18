@@ -21,6 +21,7 @@ from modules.dossier import build_dossier_markdown
 from modules.mandate import MandateInputs, calculate_mandate
 from modules.pdf_dossier import build_pdf as build_dossier_pdf
 from services.airtable_adapter import AirtableGold, DEFAULT_BASE_ID
+from services.hybrid_data_provider import HybridDataProvider, is_neon_record
 from services.drive_preview import generic_drive_link, protected_drive_preview
 from services.gmail_drive_pipeline import sync_gmail_attachments
 from FinancePlus_Airtable.client_fascicolo import build_client_fascicolo_pdf, safe_fascicolo_filename
@@ -79,6 +80,13 @@ def airtable_client() -> AirtableGold | None:
     if not token:
         return None
     return AirtableGold(token=token, base_id=secret("AIRTABLE_BASE_ID", DEFAULT_BASE_ID))
+
+
+def data_provider() -> HybridDataProvider:
+    return HybridDataProvider(
+        database_url=secret("NEON_DATABASE_URL") or secret("DATABASE_URL"),
+        airtable=airtable_client(),
+    )
 
 
 def records_df(records: list[dict], preferred: list[str] | None = None) -> pd.DataFrame:
@@ -158,7 +166,16 @@ def set_google_profile(token_json: str) -> None:
     os.environ["GOOGLE_OAUTH_TOKEN_JSON"] = token_json
 
 
-def linked_records(db: AirtableGold, fields: dict, field_name: str, table: str, limit: int = 1000) -> list[dict]:
+def linked_records(
+    db: HybridDataProvider,
+    fields: dict,
+    field_name: str,
+    table: str,
+    limit: int = 1000,
+    record_id: str = "",
+) -> list[dict]:
+    if record_id and is_neon_record(record_id):
+        return db.list_related_records(table, record_id, max_records=limit)
     ids = fields.get(field_name, [])
     return db.get_records_by_ids(table, ids, max_records=limit) if isinstance(ids, list) and ids else []
 
@@ -175,7 +192,7 @@ def norm_company(value: str) -> str:
     return s
 
 
-def client_documents(db: AirtableGold, client_name: str, linked_ids: Any) -> list[dict]:
+def client_documents(db: HybridDataProvider, client_name: str, linked_ids: Any) -> list[dict]:
     linked = db.get_records_by_ids("documenti", linked_ids, max_records=1000) if isinstance(linked_ids, list) else []
     try:
         all_docs = db.list_records("documenti", max_records=5000)
@@ -192,7 +209,7 @@ def client_documents(db: AirtableGold, client_name: str, linked_ids: Any) -> lis
 
 
 apply_theme()
-DB = airtable_client()
+DB = data_provider()
 PROFILES = google_profiles()
 
 DASH = "\U0001F3E0 Dashboard"
@@ -212,7 +229,14 @@ SETTINGS = "\u2699 Impostazioni"
 with st.sidebar:
     st.markdown('<div class="fp-brand">FINANCE<span>PLUS</span></div>', unsafe_allow_html=True)
     st.caption("UNICO V_1.1 - Web / Desktop aligned")
-    st.write("Airtable: OK" if DB else "Airtable: da configurare")
+    st.write(f"Core dati: {DB.source_label}" if DB else "Core dati: da configurare")
+    if DB and DB.neon_core_ready:
+        st.write("Neon: CORE ATTIVO")
+    elif DB and DB.neon_configured:
+        st.write("Neon: configurato / in attesa dati")
+    else:
+        st.write("Neon: da configurare")
+    st.write("Airtable fallback: OK" if DB and DB.airtable_configured else "Airtable fallback: da configurare")
     st.write("Gmail/Drive: OK" if PROFILES else "Gmail/Drive: da configurare")
     st.write("Data Quality Gate: attivo")
     st.divider()
@@ -226,15 +250,24 @@ st.caption("CRM + workflow + documenti + email + analisi creditizia + CR + conti
 if page == DASH:
     st.subheader("Centro di controllo operativo")
     if not DB:
-        st.warning("Configura AIRTABLE_TOKEN nei Secrets per attivare il CRM reale.")
-        st.info("La Desktop Edition resta utilizzabile localmente con SQLite senza Airtable.")
+        st.warning("Configura NEON_DATABASE_URL / DATABASE_URL oppure AIRTABLE_TOKEN per attivare i dati operativi.")
+        st.info("La Desktop Edition resta utilizzabile localmente con SQLite.")
     else:
         try:
             clients = DB.list_records("clienti", max_records=5000); practices = DB.list_records("pratiche", max_records=5000); documents = DB.list_records("documenti", max_records=5000); emails = DB.list_records("email", max_records=5000); analyses = DB.list_records("analisi", max_records=5000)
         except Exception as exc:
-            st.error(f"Errore Airtable: {exc}"); clients, practices, documents, emails, analyses = [], [], [], [], []
+            st.error(f"Errore sorgente dati: {exc}"); clients, practices, documents, emails, analyses = [], [], [], [], []
         cols = st.columns(5)
         for col, label, value in zip(cols, ["Clienti", "Pratiche", "Documenti", "Email", "Analisi"], [len(clients), len(practices), len(documents), len(emails), len(analyses)]): col.metric(label, value)
+        adf = records_df(analyses)
+        if not adf.empty:
+            k1, k2, k3 = st.columns(3)
+            dq = pd.to_numeric(adf.get("Data Quality", pd.Series(dtype=float)), errors="coerce").dropna()
+            scores = pd.to_numeric(adf.get("Score", pd.Series(dtype=float)), errors="coerce").dropna()
+            rated = adf.get("Rating", pd.Series(dtype=str)).fillna("").astype(str).str.strip().ne("").sum() if "Rating" in adf.columns else 0
+            k1.metric("Data Quality media", f"{dq.mean():.0f}%" if not dq.empty else "N/D")
+            k2.metric("Score interno medio", f"{scores.mean():.1f}" if not scores.empty else "N/D")
+            k3.metric("Analisi con rating", int(rated))
         pdf = records_df(practices)
         if not pdf.empty:
             mask = pd.Series(False, index=pdf.index)
@@ -248,11 +281,11 @@ if page == DASH:
             else:
                 wanted = [c for c in ["Pratica ID", "Cliente", "Istituto", "Stato", "Priorit\u00e0", "Completezza dossier", "Documenti mancanti", "Prossima azione", "Scadenza prossima azione", acol] if c and c in watch.columns]
                 st.dataframe(watch[wanted].head(100), use_container_width=True, hide_index=True)
-    st.info("Pipeline: Email/Upload -> Document AI -> SHA-256 -> Drive -> Airtable -> Analytics/CR/CC -> Business Plan -> Report")
+    st.info(f"Pipeline dati: Email/Upload -> Document AI -> SHA-256 -> storage -> {DB.source_label if DB else 'database'} -> Analytics/CR/CC -> Business Plan -> Report")
 
 elif page == CLIENTS:
     st.subheader("Clienti 360")
-    if not DB: st.warning("Airtable non autenticato.")
+    if not DB: st.warning("Nessuna sorgente dati operativa configurata.")
     else:
         try: clients = DB.list_records("clienti", max_records=5000)
         except Exception as exc: st.error(str(exc)); clients = []
@@ -265,7 +298,7 @@ elif page == CLIENTS:
         if not filtered: st.info("Nessun cliente trovato.")
         else:
             labels = {r["id"]: str(r.get("fields", {}).get("Cliente", r["id"])) for r in filtered}; rid = st.selectbox("Seleziona cliente", list(labels), format_func=lambda x: labels[x]); record = next(r for r in filtered if r["id"] == rid); f = record.get("fields", {}); name = str(f.get("Cliente", "Cliente"))
-            docs = client_documents(DB, name, f.get("Documenti", [])); practices = linked_records(DB, f, "Pratiche", "pratiche", 500); emails = linked_records(DB, f, "Email collegate", "email", 1000); analyses = linked_records(DB, f, "Analisi Creditizie", "analisi", 500)
+            docs = client_documents(DB, name, f.get("Documenti", [])); practices = linked_records(DB, f, "Pratiche", "pratiche", 500, record_id=rid); emails = linked_records(DB, f, "Email collegate", "email", 1000, record_id=rid); analyses = linked_records(DB, f, "Analisi Creditizie", "analisi", 500, record_id=rid)
             c1, c2, c3, c4 = st.columns(4); c1.metric("Pratiche", len(practices)); c2.metric("Documenti", len(docs)); c3.metric("Email", len(emails)); c4.metric("Analisi", len(analyses)); st.subheader(name)
             tabs = st.tabs(["Anagrafica", "Pratiche", "Documenti", "Email", "Analisi", "PDF Cliente"])
             with tabs[0]:
@@ -278,8 +311,11 @@ elif page == CLIENTS:
                     with st.form(f"edit_{rid}"):
                         new_name = st.text_input("Ragione sociale", value=str(f.get("Cliente", "") or "")); vat = st.text_input("P.IVA", value=str(f.get("Partita IVA", "") or "")); cf = st.text_input("CF", value=str(f.get("Codice Fiscale", "") or "")); pec = st.text_input("PEC", value=str(f.get("PEC", "") or "")); rea = st.text_input("REA", value=str(f.get("REA", "") or "")); seat = st.text_input("Sede legale", value=str(f.get("Sede legale", "") or "")); ateco = st.text_input("ATECO", value=str(f.get("ATECO", "") or "")); notes = st.text_area("Note", value=str(f.get("Note", "") or "")); save = st.form_submit_button("Salva", use_container_width=True)
                     if save:
-                        try: DB.update_record("clienti", rid, {"Cliente": new_name, "Partita IVA": vat, "Codice Fiscale": cf, "PEC": pec, "REA": rea, "Sede legale": seat, "ATECO": ateco, "Note": notes}); st.success("Anagrafica aggiornata.")
-                        except Exception as exc: st.error(f"Aggiornamento non riuscito: {exc}")
+                        if is_neon_record(rid):
+                            st.warning("Modalita read-shadow: i record Neon sono in sola lettura fino al cutover write-through.")
+                        else:
+                            try: DB.update_record("clienti", rid, {"Cliente": new_name, "Partita IVA": vat, "Codice Fiscale": cf, "PEC": pec, "REA": rea, "Sede legale": seat, "ATECO": ateco, "Note": notes}); st.success("Anagrafica aggiornata.")
+                            except Exception as exc: st.error(f"Aggiornamento non riuscito: {exc}")
             with tabs[1]:
                 if practices:
                     wanted = ["Pratica ID", "Tipo Pratica", "Istituto", "Importo Richiesto", "Stato", "Priorit\u00e0", "Responsabile pratica", "Completezza dossier", "Stato documentazione", "Documenti mancanti", "Prossima azione", "Scadenza prossima azione", "Alert e criticit\u00e0"]
@@ -289,9 +325,12 @@ elif page == CLIENTS:
                     with st.form(f"practice_{rid}"):
                         code = st.text_input("Pratica ID", value=f"{safe_filename(name)[:10].upper()}-{datetime.now().year}-{len(practices)+1:03d}"); ptype = st.selectbox("Tipo", ["Finanziamento", "Factoring", "Leasing", "Fideiussione", "Altro"]); bank = st.text_input("Banca / intermediario"); amount = st.number_input("Importo richiesto EUR", min_value=0.0, step=1000.0); status = st.selectbox("Stato", ["Da avviare", "In istruttoria", "Integrazione", "Deliberata", "Erogata", "Respinta", "Sospesa"]); priority = st.selectbox("Priorita", ["Alta", "Media", "Bassa"], index=1); owner = st.text_input("Responsabile"); action = st.text_input("Prossima azione"); due = st.date_input("Scadenza prossima azione", value=date.today()); missing = st.text_area("Documenti mancanti"); create = st.form_submit_button("Crea pratica", use_container_width=True)
                     if create:
-                        try:
-                            payload = {"Pratica ID": code, "Cliente": name, "Cliente collegato": [rid], "Tipo Pratica": ptype, "Istituto": bank, "Importo Richiesto": amount, "Stato": status, "Responsabile pratica": owner, "Prossima azione": action, "Scadenza prossima azione": due.isoformat(), "Documenti mancanti": missing, "Stato documentazione": "Incompleta" if missing.strip() else "Da verificare", "Priorit\u00e0": priority}; DB.create_record("pratiche", payload); st.success("Pratica creata.")
-                        except Exception as exc: st.error(f"Creazione non riuscita: {exc}")
+                        if is_neon_record(rid):
+                            st.warning("Modalita read-shadow: creazione pratica sul record Neon disabilitata fino al cutover write-through.")
+                        else:
+                            try:
+                                payload = {"Pratica ID": code, "Cliente": name, "Cliente collegato": [rid], "Tipo Pratica": ptype, "Istituto": bank, "Importo Richiesto": amount, "Stato": status, "Responsabile pratica": owner, "Prossima azione": action, "Scadenza prossima azione": due.isoformat(), "Documenti mancanti": missing, "Stato documentazione": "Incompleta" if missing.strip() else "Da verificare", "Priorit\u00e0": priority}; DB.create_record("pratiche", payload); st.success("Pratica creata.")
+                            except Exception as exc: st.error(f"Creazione non riuscita: {exc}")
             with tabs[2]:
                 if docs:
                     wanted = ["Documento", "Tipo Documento", "Esercizio", "Data Documento", "Pratica ID", "Nome Originale", "Nome Definitivo", "Origine", "Stato Verifica", "Protezione Drive", "URL Drive", "Archivio ZIP sorgente", "Percorso nel pacchetto"]
@@ -315,7 +354,7 @@ elif page == CLIENTS:
 
 elif page == PRACTICES:
     st.subheader("Pratiche e Workflow")
-    if not DB: st.warning("Airtable non autenticato.")
+    if not DB: st.warning("Nessuna sorgente dati operativa configurata.")
     else:
         try: df = records_df(DB.list_records("pratiche", max_records=5000))
         except Exception as exc: st.error(str(exc)); df = pd.DataFrame()
@@ -331,7 +370,7 @@ elif page == PRACTICES:
 
 elif page == DOCUMENTS:
     st.subheader("Documenti e Anteprima")
-    if not DB: st.warning("Airtable non autenticato.")
+    if not DB: st.warning("Nessuna sorgente dati operativa configurata.")
     else:
         try: df = records_df(DB.list_records("documenti", max_records=5000))
         except Exception as exc: st.error(str(exc)); df = pd.DataFrame()
@@ -378,11 +417,12 @@ elif page == DOC_AI:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True); st.info("I dati non leggibili restano da verificare: nessuna ricostruzione arbitraria.")
 
 elif page == MAIL:
-    st.subheader("Email -> Document AI -> Drive -> Airtable"); st.caption("Gmail usa OAuth. Le caselle Aruba sono disponibili anche nel pannello Aruba Mail della sidebar.")
-    if not DB: st.warning("Serve AIRTABLE_TOKEN.")
+    st.subheader("Email -> Document AI -> Drive -> Airtable compatibility"); st.caption("Gmail usa OAuth. In questa fase la pipeline email continua a registrare su Airtable mentre il core Neon resta in read-shadow.")
+    mail_ready = bool(DB and DB.airtable_configured and PROFILES)
+    if not (DB and DB.airtable_configured): st.warning("Per la pipeline Gmail serve ancora AIRTABLE_TOKEN durante la fase read-shadow.")
     if not PROFILES: st.warning("Serve almeno un GOOGLE_OAUTH_TOKEN_JSON.")
     profile = st.selectbox("Profilo Google", list(PROFILES) if PROFILES else ["Non configurato"]); query = st.text_input("Query Gmail", value="has:attachment newer_than:1d -in:spam -in:trash"); folder = st.text_input("Drive folder ID", value=secret("GOOGLE_DRIVE_FOLDER_ID")); max_messages = st.slider("Messaggi massimi", 1, 200, 50)
-    if st.button("Sincronizza Gmail", type="primary", disabled=not (DB and PROFILES)):
+    if st.button("Sincronizza Gmail", type="primary", disabled=not mail_ready):
         try:
             set_google_profile(PROFILES[profile]); result = sync_gmail_attachments(query=query, drive_folder_id=folder or None, max_messages=max_messages); a, b, c, d = st.columns(4); a.metric("Messaggi", result.get("messages", 0)); b.metric("Allegati", result.get("attachments", 0)); c.metric("Caricati", result.get("uploaded", 0)); d.metric("Duplicati", result.get("duplicates", 0)); st.warning(f"Errori: {len(result['errors'])}") if result.get("errors") else st.success("Sincronizzazione completata.")
         except Exception as exc: st.error(f"Sincronizzazione non riuscita: {exc}")
@@ -414,9 +454,9 @@ elif page == REPORTS:
     if DB:
         try: clients = DB.list_records("clienti", max_records=5000)
         except Exception: clients = []
-        labels = {r["id"]: str(r.get("fields", {}).get("Cliente", r["id"])) for r in clients}; rid = st.selectbox("Cliente Airtable", [""] + list(labels), format_func=lambda x: "- Seleziona -" if not x else labels[x])
+        labels = {r["id"]: str(r.get("fields", {}).get("Cliente", r["id"])) for r in clients}; rid = st.selectbox("Cliente dati operativi", [""] + list(labels), format_func=lambda x: "- Seleziona -" if not x else labels[x])
         if rid:
-            rec = next(r for r in clients if r["id"] == rid); client = rec.get("fields", {}).copy(); docs = client_documents(DB, str(client.get("Cliente", "")), client.get("Documenti", [])); practices = linked_records(DB, client, "Pratiche", "pratiche", 500); emails = linked_records(DB, client, "Email collegate", "email", 1000); analyses = linked_records(DB, client, "Analisi Creditizie", "analisi", 500); a, b = st.columns(2)
+            rec = next(r for r in clients if r["id"] == rid); client = rec.get("fields", {}).copy(); docs = client_documents(DB, str(client.get("Cliente", "")), client.get("Documenti", [])); practices = linked_records(DB, client, "Pratiche", "pratiche", 500, record_id=rid); emails = linked_records(DB, client, "Email collegate", "email", 1000, record_id=rid); analyses = linked_records(DB, client, "Analisi Creditizie", "analisi", 500, record_id=rid); a, b = st.columns(2)
             if docs: report = build_client_documents_pdf(str(client.get("Cliente", "Cliente")), docs, practices, client); a.download_button("Report documenti + pratiche", report, f"{safe_filename(client.get('Cliente', 'Cliente'))}_Report_Cliente.pdf", "application/pdf", use_container_width=True)
             fascicolo = build_client_fascicolo_pdf(client, records_df(docs).drop(columns=["Record ID"], errors="ignore"), records_df(practices).drop(columns=["Record ID"], errors="ignore"), records_df(emails).drop(columns=["Record ID"], errors="ignore"), records_df(analyses).drop(columns=["Record ID"], errors="ignore")); b.download_button("Fascicolo Cliente completo", fascicolo, safe_fascicolo_filename(str(client.get("Cliente", "Cliente"))), "application/pdf", use_container_width=True)
     st.markdown("### Dossier Banca da analisi corrente")
@@ -432,11 +472,11 @@ elif page == MANDATES:
     if history: df = pd.DataFrame(history); st.dataframe(df, use_container_width=True, hide_index=True); st.download_button("Storico CSV", df.to_csv(index=False).encode(), "Mandati_F_P_UNICO.csv", "text/csv")
 
 elif page == SETTINGS:
-    st.subheader("Impostazioni, Connessioni e Sicurezza"); drive_folder = secret("GOOGLE_DRIVE_FOLDER_ID"); aruba_dd = bool(secret("ARUBA_D_DANGELO_PASSWORD")); aruba_pratiche = bool(secret("ARUBA_PRATICHE_PASSWORD")); a, b, c, d = st.columns(4); a.metric("Airtable", "OK" if DB else "DA CONFIGURARE"); b.metric("Gmail/Drive", "OK" if PROFILES else "DA CONFIGURARE"); c.metric("Aruba D.Dangelo", "OK" if aruba_dd else "DA CONFIGURARE"); d.metric("Aruba Pratiche", "OK" if aruba_pratiche else "DA CONFIGURARE"); tabs = st.tabs(["Connessioni", "Secrets richiesti", "Desktop Edition"])
+    st.subheader("Impostazioni, Connessioni e Sicurezza"); drive_folder = secret("GOOGLE_DRIVE_FOLDER_ID"); aruba_dd = bool(secret("ARUBA_D_DANGELO_PASSWORD")); aruba_pratiche = bool(secret("ARUBA_PRATICHE_PASSWORD")); a, b, c, d, e = st.columns(5); a.metric("Core dati", DB.source_label if DB else "DA CONFIGURARE"); b.metric("Neon", "CORE ATTIVO" if DB and DB.neon_core_ready else "STANDBY" if DB and DB.neon_configured else "DA CONFIGURARE"); c.metric("Airtable fallback", "OK" if DB and DB.airtable_configured else "DA CONFIGURARE"); d.metric("Gmail/Drive", "OK" if PROFILES else "DA CONFIGURARE"); e.metric("Aruba", "OK" if aruba_dd and aruba_pratiche else "PARZIALE"); tabs = st.tabs(["Connessioni", "Secrets richiesti", "Desktop Edition"])
     with tabs[0]:
-        rows = [{"Servizio": "Airtable", "Stato": "OK" if DB else "Da configurare", "Dettaglio": secret("AIRTABLE_BASE_ID", DEFAULT_BASE_ID)}, {"Servizio": "Google Drive", "Stato": "OK" if drive_folder else "Da configurare", "Dettaglio": drive_folder or "GOOGLE_DRIVE_FOLDER_ID"}, {"Servizio": "Gmail OAuth", "Stato": "OK" if PROFILES else "Da configurare", "Dettaglio": ", ".join(PROFILES) if PROFILES else "GOOGLE_OAUTH_TOKEN_JSON"}, {"Servizio": "Aruba D.Dangelo", "Stato": "OK" if aruba_dd else "Da configurare", "Dettaglio": "imaps.aruba.it:993 SSL"}, {"Servizio": "Aruba Pratiche", "Stato": "OK" if aruba_pratiche else "Da configurare", "Dettaglio": "imaps.aruba.it:993 SSL"}]; st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True); st.warning("Password, token e OAuth non devono essere salvati nel codice GitHub.")
-    with tabs[1]: st.code("AIRTABLE_TOKEN = \"...\"\nAIRTABLE_BASE_ID = \"appoNJtS64JIcZUhT\"\nGOOGLE_OAUTH_TOKEN_JSON = \"...\"\nGOOGLE_DRIVE_FOLDER_ID = \"...\"\nARUBA_D_DANGELO_EMAIL = \"d.dangelo@financeplus.tech\"\nARUBA_D_DANGELO_PASSWORD = \"...\"\nARUBA_PRATICHE_EMAIL = \"pratiche@financeplus.tech\"\nARUBA_PRATICHE_PASSWORD = \"...\"", language="toml")
-    with tabs[2]: st.markdown("**Desktop Edition:** `desktop/FINANCEPLUS_DESKTOP_V1_0.py`"); st.markdown("Installazione Windows: `desktop/INSTALLA_E_AVVIA_WINDOWS.bat`"); st.markdown("Creazione EXE: `desktop/CREA_EXE_WINDOWS.bat`"); st.info("La Desktop Edition usa SQLite locale e puo funzionare anche senza Airtable/Drive. La web app usa il CRM Airtable come fonte operativa.")
+        rows = [{"Servizio": "Neon PostgreSQL", "Stato": "CORE ATTIVO" if DB and DB.neon_core_ready else "Standby / vuoto" if DB and DB.neon_configured else "Da configurare", "Dettaglio": "Sistema di record cloud preferito"}, {"Servizio": "Airtable", "Stato": "Fallback attivo" if DB and DB.read_source == "airtable" else "Compatibilita" if DB and DB.airtable_configured else "Da configurare", "Dettaglio": secret("AIRTABLE_BASE_ID", DEFAULT_BASE_ID)}, {"Servizio": "Google Drive", "Stato": "OK" if drive_folder else "Da configurare", "Dettaglio": drive_folder or "GOOGLE_DRIVE_FOLDER_ID"}, {"Servizio": "Gmail OAuth", "Stato": "OK" if PROFILES else "Da configurare", "Dettaglio": ", ".join(PROFILES) if PROFILES else "GOOGLE_OAUTH_TOKEN_JSON"}, {"Servizio": "Aruba D.Dangelo", "Stato": "OK" if aruba_dd else "Da configurare", "Dettaglio": "imaps.aruba.it:993 SSL"}, {"Servizio": "Aruba Pratiche", "Stato": "OK" if aruba_pratiche else "Da configurare", "Dettaglio": "imaps.aruba.it:993 SSL"}]; st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True); st.warning("Password, token, connection string e OAuth non devono essere salvati nel codice GitHub.")
+    with tabs[1]: st.code("NEON_DATABASE_URL = \"...\"\n# oppure DATABASE_URL = \"...\"\nAIRTABLE_TOKEN = \"...\"\nAIRTABLE_BASE_ID = \"appoNJtS64JIcZUhT\"\nGOOGLE_OAUTH_TOKEN_JSON = \"...\"\nGOOGLE_DRIVE_FOLDER_ID = \"...\"\nARUBA_D_DANGELO_EMAIL = \"d.dangelo@financeplus.tech\"\nARUBA_D_DANGELO_PASSWORD = \"...\"\nARUBA_PRATICHE_EMAIL = \"pratiche@financeplus.tech\"\nARUBA_PRATICHE_PASSWORD = \"...\"", language="toml")
+    with tabs[2]: st.markdown("**Desktop Edition:** `desktop/FINANCEPLUS_DESKTOP_V1_0.py`"); st.markdown("Installazione Windows: `desktop/INSTALLA_E_AVVIA_WINDOWS.bat`"); st.markdown("Creazione EXE: `desktop/CREA_EXE_WINDOWS.bat`"); st.info("La Desktop Edition usa SQLite locale. La web app usa Neon come core quando contiene dati, con Airtable come fallback di compatibilita durante il collaudo.")
 
 st.divider()
 st.caption("FINANCE_PLUS_UNICO V_1.1 - Web/Desktop aligned - Data Quality Gate - nessun dato finanziario inventato")
