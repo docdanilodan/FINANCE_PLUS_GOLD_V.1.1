@@ -32,7 +32,7 @@ aprono la stessa applicazione V_1.1.
 ### Macro-funzioni web
 
 1. Dashboard operativa.
-2. Clienti 360 Airtable con ricerca, anagrafica e linked records.
+2. Clienti 360 con provider ibrido: Neon PostgreSQL quando il core contiene dati, Airtable come fallback di compatibilita.
 3. Pratiche e workflow con stato, priorita, responsabile, scadenze, documenti mancanti e alert.
 4. Archivio Documenti con filtri, origine, SHA-256, stato verifica e link Drive.
 5. Document AI content-first, classificazione e naming automatico.
@@ -58,8 +58,9 @@ La web app usa un workspace coerente con la Desktop Edition: sidebar blu notte, 
 Gmail / Aruba / Upload
   -> Document AI
   -> Deduplica SHA-256
-  -> Google Drive
-  -> Airtable CRM
+  -> Google Drive / storage
+  -> Neon PostgreSQL (core quando popolato)
+     oppure Airtable fallback durante il read-shadow
   -> Analytics + Centrale Rischi + Conti Correnti
   -> Business Plan
   -> Dossier / Fascicolo Cliente PDF
@@ -127,6 +128,9 @@ Le credenziali non devono essere pubblicate nel repository.
 Esempio Streamlit Secrets:
 
 ```toml
+NEON_DATABASE_URL = "..."
+# in alternativa: DATABASE_URL = "..."
+
 AIRTABLE_TOKEN = "..."
 AIRTABLE_BASE_ID = "appoNJtS64JIcZUhT"
 GOOGLE_OAUTH_TOKEN_JSON = "..."
@@ -150,8 +154,20 @@ FinancePlus non inventa dati finanziari mancanti. Se la fonte non consente di ca
 
 - **GitHub**: codice, versionamento, CI e automazioni.
 - **Streamlit**: web app operativa.
-- **Airtable**: CRM e dati strutturati.
+- **Neon PostgreSQL**: sistema di record cloud preferito per Cliente 360, pratiche, documenti, analisi e dati creditizi.
+- **Airtable**: compatibility layer/fallback durante il read-shadow e pipeline email legacy.
 - **Google Drive**: storage documentale.
 - **Gmail / Aruba**: sorgenti email e allegati.
 - **Desktop Edition**: uso locale con SQLite e archivio locale.
 - **Secrets**: credenziali e token protetti.
+
+
+## 7. Neon read-shadow
+
+La web master usa `services/hybrid_data_provider.py`.
+
+- Neon viene scelto per Clienti, Pratiche, Documenti e Analisi solo quando è configurato e `clients` contiene almeno un record.
+- Con Neon vuoto o non raggiungibile, Airtable rimane il fallback automatico.
+- I record Neon sono in sola lettura in questa fase.
+- Nessun dato viene migrato o cancellato automaticamente.
+- La pipeline Gmail continua a usare Airtable fino al successivo cutover write-through.
