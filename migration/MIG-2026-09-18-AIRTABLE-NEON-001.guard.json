@@ -5,7 +5,7 @@
     "Critical count mismatch count is non-zero"
   ],
   "warnings": [
-    "Count mismatch requires reconciliation: documents (293 != 256)",
+    "Count mismatch requires reconciliation: documents (293 != 261)",
     "Representative smoke test has not been run"
   ],
   "changes_performed": "NONE"
