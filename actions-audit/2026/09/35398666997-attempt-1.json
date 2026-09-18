@@ -1,0 +1,30 @@
+{
+  "actor": "docdanilodan",
+  "archived_at": "2026-09-18T21:50:08.881974+00:00",
+  "conclusion": "success",
+  "created_at": "2026-09-18T21:49:25Z",
+  "event": "pull_request",
+  "head_branch": "docs/migration-airtable-neon-stage-20260918",
+  "head_sha": "d3c986177b035d8b0aad6df14be3f75394132dd4",
+  "html_url": "https://github.com/docdanilodan/FINANCE_PLUS_GOLD_V.1.1/actions/runs/35398666997",
+  "jobs": [
+    {
+      "completed_at": "2026-09-18T21:49:58Z",
+      "conclusion": "success",
+      "id": 105773262859,
+      "name": "test",
+      "started_at": "2026-09-18T21:49:27Z",
+      "status": "completed",
+      "steps": []
+    }
+  ],
+  "repository": "docdanilodan/FINANCE_PLUS_GOLD_V.1.1",
+  "run_attempt": 1,
+  "run_id": 35398666997,
+  "run_number": 117,
+  "schema_version": 1,
+  "status": "completed",
+  "updated_at": "2026-09-18T21:49:58Z",
+  "workflow_id": 344309669,
+  "workflow_name": "FinancePlus unified CI"
+}
