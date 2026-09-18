@@ -11,14 +11,16 @@ from pydantic import BaseModel, Field
 
 from services.airtable_mcp_policy import evaluate_airtable_mcp_action
 from services.event_orchestrator import FinancePlusEventOrchestrator
+from services.integration_registry import health_snapshot
 
 
 app = FastAPI(
     title="FinancePlus 360 AI Event API",
-    version="1.4.1",
+    version="1.4.2",
     description=(
         "Webhook/event ingress for Airtable, Gmail, GitHub, Work and Drive with staged AI approvals, "
-        "CSE privacy, GitHub OIDC, Drive classification and governed Airtable MCP actions."
+        "CSE privacy, GitHub OIDC, Drive classification, governed Airtable MCP actions and "
+        "SMART F+ provider-readiness reporting."
     ),
 )
 
@@ -123,15 +125,20 @@ def _external(source: str, payload: ExternalEventPayload) -> dict:
 
 @app.get("/health")
 def health() -> dict:
+    providers = health_snapshot()
     return {
         "status": "ok",
         "webhook_secret_configured": bool(os.getenv("FINANCEPLUS_WEBHOOK_SECRET")),
         "airtable_configured": bool(os.getenv("AIRTABLE_TOKEN")),
+        "neon_configured": providers["providers"]["neon"]["configured"],
+        "system_of_record": providers["system_of_record"],
+        "cloud_core_ready": providers["cloud_core_ready"],
         "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
         "cdata_configured": bool(os.getenv("CDATA_USER") and os.getenv("CDATA_PAT")),
-        "adobe_pdf_services_configured": bool(
-            os.getenv("PDF_SERVICES_CLIENT_ID") and os.getenv("PDF_SERVICES_CLIENT_SECRET")
-        ),
+        "azure_document_intelligence_configured": providers["providers"][
+            "azure_document_intelligence"
+        ]["configured"],
+        "adobe_pdf_services_configured": providers["providers"]["adobe_pdf_services"]["configured"],
         "drive_label_mapping_configured": bool(os.getenv("FINANCEPLUS_DRIVE_LABEL_MAP_JSON")),
         "ai_staging": os.getenv("FINANCEPLUS_AI_STAGING", "true").lower() not in {"0", "false", "no"},
         "ai_write_back": os.getenv("FINANCEPLUS_AI_WRITE_BACK", "false").lower() in {"1", "true", "yes"},
@@ -141,6 +148,7 @@ def health() -> dict:
         "drive_label_policy": True,
         "airtable_mcp_governance": True,
         "responses_api_only": True,
+        "provider_readiness": providers["providers"],
     }
 
 

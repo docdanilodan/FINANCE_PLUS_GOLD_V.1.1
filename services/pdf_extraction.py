@@ -68,10 +68,28 @@ def _adobe_pdf_to_markdown(raw: bytes) -> str:
     return bytes(content).decode("utf-8", errors="replace").strip()
 
 
-def _cloud_allowed(sensitivity: str, ai_policy: str) -> bool:
+def _azure_document_to_markdown(raw: bytes) -> str:
+    from services.azure_document_intelligence import (
+        AzureDocumentIntelligenceClient,
+        AzureDocumentIntelligenceConfig,
+    )
+
+    config = AzureDocumentIntelligenceConfig.from_env()
+    if config is None:
+        raise RuntimeError("Azure AI Document Intelligence non configurato")
+    return AzureDocumentIntelligenceClient(config).analyze_bytes(raw)
+
+
+def _cloud_allowed(
+    sensitivity: str,
+    ai_policy: str,
+    provider: str = "adobe",
+) -> bool:
     if ai_policy == "Bloccata" or sensitivity == "Altamente riservato":
         return False
     if sensitivity == "Riservato":
+        if provider == "azure":
+            return _truthy("FINANCEPLUS_AZURE_ALLOW_CONFIDENTIAL", default=False)
         return _truthy("FINANCEPLUS_ADOBE_ALLOW_CONFIDENTIAL", default=False)
     return True
 
@@ -86,11 +104,15 @@ def extract_document_content(
 ) -> ExtractionResult:
     """Extract document text without weakening FinancePlus privacy controls.
 
-    PDFs are always eligible for local extraction. Adobe PDF-to-Markdown is an
-    optional quality layer. Callers handling unclassified inbound documents
-    should first call this function with ``allow_cloud=False``, classify the
-    local result, then call it again with ``allow_cloud=True`` only if the
-    resulting privacy policy permits cloud processing.
+    PDFs are always eligible for local extraction. Azure AI Document
+    Intelligence and Adobe PDF-to-Markdown are optional quality layers.
+    Callers handling unclassified inbound documents should first call this
+    function with ``allow_cloud=False``, classify the local result, then call
+    it again with ``allow_cloud=True`` only if the resulting privacy policy
+    permits cloud processing.
+
+    FINANCEPLUS_PDF_EXTRACTOR accepts: auto, azure, adobe, local.
+    In auto mode Azure is preferred when configured, then Adobe, then pypdf.
     """
     lower_name = (filename or "").lower()
     is_pdf = lower_name.endswith(".pdf") or mime_type == "application/pdf"
@@ -111,19 +133,46 @@ def extract_document_content(
         warnings.append(f"Estrazione PDF locale non riuscita: {exc}")
 
     mode = os.getenv("FINANCEPLUS_PDF_EXTRACTOR", "auto").strip().lower() or "auto"
+    if mode not in {"auto", "azure", "adobe", "local"}:
+        warnings.append(f"FINANCEPLUS_PDF_EXTRACTOR non riconosciuto ({mode}); usato auto")
+        mode = "auto"
+
+    azure_configured = bool(
+        os.getenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "").strip()
+        and os.getenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", "").strip()
+    )
     adobe_configured = bool(
         os.getenv("PDF_SERVICES_CLIENT_ID", "").strip()
         and os.getenv("PDF_SERVICES_CLIENT_SECRET", "").strip()
     )
     cloud_requested = True if allow_cloud is None else bool(allow_cloud)
 
-    should_try_adobe = (
+    if (
+        cloud_requested
+        and mode in {"auto", "azure"}
+        and azure_configured
+        and _cloud_allowed(sensitivity, ai_policy, provider="azure")
+    ):
+        try:
+            markdown = _azure_document_to_markdown(raw)
+            if markdown:
+                return ExtractionResult(
+                    text=markdown[:400_000],
+                    method="azure_document_intelligence",
+                    cloud_used=True,
+                    warnings=warnings,
+                )
+        except Exception as exc:
+            warnings.append(f"Azure Document Intelligence non riuscito: {exc}")
+            if mode == "azure" and not local_text:
+                return ExtractionResult(method="azure_failed", warnings=warnings)
+
+    if (
         cloud_requested
         and mode in {"auto", "adobe"}
         and adobe_configured
-        and _cloud_allowed(sensitivity, ai_policy)
-    )
-    if should_try_adobe:
+        and _cloud_allowed(sensitivity, ai_policy, provider="adobe")
+    ):
         try:
             markdown = _adobe_pdf_to_markdown(raw)
             if markdown:
@@ -138,7 +187,13 @@ def extract_document_content(
             if mode == "adobe" and not local_text:
                 return ExtractionResult(method="adobe_failed", warnings=warnings)
 
-    if cloud_requested and mode == "adobe" and not _cloud_allowed(sensitivity, ai_policy):
+    if cloud_requested and mode == "azure" and not _cloud_allowed(
+        sensitivity, ai_policy, provider="azure"
+    ):
+        warnings.append("Azure bloccato dalla policy privacy FinancePlus; usata estrazione locale")
+    if cloud_requested and mode == "adobe" and not _cloud_allowed(
+        sensitivity, ai_policy, provider="adobe"
+    ):
         warnings.append("Adobe bloccato dalla policy privacy FinancePlus; usata estrazione locale")
 
     return ExtractionResult(
