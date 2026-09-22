@@ -1,0 +1,37 @@
+{
+  "actor": "docdanilodan",
+  "archived_at": "2026-09-22T21:40:20.717412+00:00",
+  "conclusion": "failure",
+  "created_at": "2026-09-22T21:39:34Z",
+  "event": "schedule",
+  "head_branch": "main",
+  "head_sha": "ae53f82a58e7a9a3cdfa80b7b53dd3c05ced676b",
+  "html_url": "https://github.com/docdanilodan/FINANCE_PLUS_GOLD_V.1.1/actions/runs/35787953530",
+  "jobs": [
+    {
+      "completed_at": "2026-09-22T21:40:11Z",
+      "conclusion": "failure",
+      "id": 106949243180,
+      "name": "reconcile",
+      "started_at": "2026-09-22T21:39:36Z",
+      "status": "completed",
+      "steps": [
+        {
+          "conclusion": "failure",
+          "name": "Reconcile Google Drive labels with FinancePlus policy",
+          "number": 5,
+          "status": "completed"
+        }
+      ]
+    }
+  ],
+  "repository": "docdanilodan/FINANCE_PLUS_GOLD_V.1.1",
+  "run_attempt": 1,
+  "run_id": 35787953530,
+  "run_number": 85,
+  "schema_version": 1,
+  "status": "completed",
+  "updated_at": "2026-09-22T21:40:11Z",
+  "workflow_id": 346884899,
+  "workflow_name": "FinancePlus Drive classification sync"
+}
