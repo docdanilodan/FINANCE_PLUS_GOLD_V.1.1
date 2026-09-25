@@ -192,7 +192,11 @@ class Mistral:
             return str(data["choices"][0]["message"]["content"]).strip()
         except Exception:raise Fault(503,"AI_PROVIDER_ERROR","SERAFINO cloud non ha completato la risposta.") from None
 
-store=Store();store.ensure();ai=Mistral()
+try:
+    store=Store();store.ensure()
+except Exception:
+    store=None
+ai=Mistral()
 app=FastAPI(title="SMART F+ Mobile Cloud",version=__version__,docs_url=None,redoc_url=None,openapi_url=None)
 app.add_middleware(TrustedHostMiddleware,allowed_hosts=[x.strip() for x in (os.getenv("ALLOWED_HOSTS") or "*.onrender.com,localhost,127.0.0.1").split(",") if x.strip()])
 bearer=HTTPBearer(auto_error=False)
@@ -220,15 +224,20 @@ async def unexpected_handler(request,exc):return JSONResponse({"code":"INTERNAL_
 async def transport(request,call_next):
     if request.headers.get("origin") or request.headers.get("content-encoding"):return JSONResponse({"code":"TRANSPORT_REJECTED","message":"Richiesta non consentita."},status_code=403)
     r=await call_next(request);r.headers["Cache-Control"]="no-store";r.headers["X-Content-Type-Options"]="nosniff";return r
+def require_store():
+    if store is None: raise Fault(503,"DATABASE_NOT_CONFIGURED","Configura DATABASE_URL del progetto Neon FinancePlus Cloud.")
+    return store
 def identity(credentials:HTTPAuthorizationCredentials|None=Depends(bearer)):
+    s=require_store()
     if not credentials or credentials.scheme.lower()!="bearer":raise Fault(401,"AUTH_REQUIRED","Collega e sblocca il dispositivo.")
-    d=store.identity(credentials.credentials);rate("device:"+d["id"],180);return d
+    d=s.identity(credentials.credentials);rate("device:"+d["id"],180);return d
 
 @app.get("/health")
 def health():
+    if store is None:return {"service":"SMART F+ Mobile Cloud","version":__version__,"database_ready":False,"clients":0,"serafino_ai":"READY" if ai.key else "NOT_CONFIGURED","requires_pc_online":False}
     h=store.health();return {"service":"SMART F+ Mobile Cloud","version":__version__,"database_ready":True,"clients":h["clients"],"serafino_ai":"READY" if ai.key else "NOT_CONFIGURED","requires_pc_online":False}
 @app.post("/v1/session")
-def new_session(body:SessionInput,request:Request):rate("auth:"+str(request.client.host if request.client else "unknown"),12);return store.session(body.device_id,body.device_secret)
+def new_session(body:SessionInput,request:Request):rate("auth:"+str(request.client.host if request.client else "unknown"),12);return require_store().session(body.device_id,body.device_secret)
 @app.get("/v1/capabilities")
 def capabilities(d=Depends(identity)):return {"version":__version__,"master":MASTER,"read":True,"intake":False,"approval_queue":False,"ai_provider":"mistral","ai_configured":bool(ai.key),"push":False,"cloud_sync":True,"requires_pc_online":False,"voice":"ios_on_device_push_to_talk","serafino_operator":True,"serafino_version":"2.1-cloud","navigation_commands":True,"learning":True,"material_actions_require_confirmation":True,"cloud_binary_storage":False}
 @app.get("/v1/dashboard")
