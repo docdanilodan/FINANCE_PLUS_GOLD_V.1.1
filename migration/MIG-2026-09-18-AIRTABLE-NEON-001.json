@@ -1,0 +1,127 @@
+{
+  "migration_id": "MIG-2026-09-18-AIRTABLE-NEON-001",
+  "created_at": "2026-09-18T21:28:00Z",
+  "mode": "copy",
+  "source": {
+    "system": "other",
+    "account_ref": "Airtable FinancePlus AI",
+    "root": "base:appoNJtS64JIcZUhT"
+  },
+  "destination": {
+    "system": "postgres",
+    "account_ref": "Neon FinancePlus Cloud staging",
+    "root": "project:dry-scene-59065763/branch:br-morning-tree-b2aii623"
+  },
+  "backup": {
+    "required": true,
+    "status": "verified",
+    "reference": "Airtable base app8YBHNmH3JiAd8H - FinancePlus AI BACKUP 2026-09-18 PRE_NEON; 421/421 source records plus schema metadata"
+  },
+  "assets": [
+    {
+      "asset_id": "clients",
+      "type": "database",
+      "source_ref": "Airtable Clienti",
+      "destination_ref": "Neon staging public.clients",
+      "source_count": 97,
+      "destination_count": 97,
+      "source_sha256": null,
+      "destination_sha256": null,
+      "id_preservation": "mapped",
+      "status": "verified",
+      "notes": "Deterministic mapping from sorted Airtable record IDs to Neon IDs 1..97; original Airtable record IDs and source timestamps retained in migration audit metadata."
+    },
+    {
+      "asset_id": "practices",
+      "type": "database",
+      "source_ref": "Airtable Pratiche",
+      "destination_ref": "Neon staging public.practices",
+      "source_count": 9,
+      "destination_count": 9,
+      "source_sha256": null,
+      "destination_sha256": null,
+      "id_preservation": "mapped",
+      "status": "verified",
+      "notes": "Deterministic mapping from sorted Airtable record IDs to Neon IDs 1..9; all client foreign keys resolved; requested amount total reconciled at EUR 5,500,000."
+    },
+    {
+      "asset_id": "documents",
+      "type": "document",
+      "source_ref": "Airtable Documenti",
+      "destination_ref": "Neon staging public.documents",
+      "source_count": 293,
+      "destination_count": 261,
+      "source_sha256": null,
+      "destination_sha256": null,
+      "id_preservation": "mapped",
+      "status": "blocked",
+      "notes": "32 source records intentionally withheld: 23 still lack a verifiable SHA-256 and 9 have no uniquely resolvable Cliente 360 association. Eleven formerly hashless records were recovered from exact Google Drive or Library matches and hashed from authenticated/materialized raw bytes before insertion. No hash was inferred from filenames."
+    },
+    {
+      "asset_id": "analyses",
+      "type": "database",
+      "source_ref": "Airtable Analisi Creditizie",
+      "destination_ref": "Neon staging public.analyses",
+      "source_count": 6,
+      "destination_count": 6,
+      "source_sha256": null,
+      "destination_sha256": null,
+      "id_preservation": "mapped",
+      "status": "verified",
+      "notes": "Original source record IDs retained in result_json; source does not provide a Data Quality value, therefore migrated rows explicitly retain data_quality=0 and NOT_AVAILABLE_IN_SOURCE metadata."
+    },
+    {
+      "asset_id": "source-logical-backup",
+      "type": "backup",
+      "source_ref": "Airtable FinancePlus AI core plus Email",
+      "destination_ref": "Airtable app8YBHNmH3JiAd8H Migration Snapshot",
+      "source_count": 421,
+      "destination_count": 421,
+      "source_sha256": null,
+      "destination_sha256": null,
+      "id_preservation": "preserved",
+      "status": "verified",
+      "notes": "97 Clienti + 9 Pratiche + 293 Documenti + 16 Email + 6 Analisi Creditizie. Snapshot keys are unique; source record IDs, createdTime and raw cellValuesByFieldId are retained; source schema is stored in Migration Metadata. Eventi AI and Proposte AI contain zero source rows."
+    }
+  ],
+  "connectors": [
+    {
+      "name": "Airtable",
+      "source_status": "connected",
+      "destination_status": "backup_verified",
+      "secret_value_in_manifest": false
+    },
+    {
+      "name": "Neon",
+      "source_status": "not_applicable",
+      "destination_status": "staging_connected",
+      "secret_value_in_manifest": false
+    },
+    {
+      "name": "Google Drive",
+      "source_status": "connected_read_only_recovery",
+      "destination_status": "not_in_cutover_scope",
+      "secret_value_in_manifest": false
+    }
+  ],
+  "verification": {
+    "foreign_keys_ok": true,
+    "orphan_count": 0,
+    "checksum_mismatch_count": 0,
+    "critical_count_mismatch_count": 32,
+    "representative_smoke_test": "not_run",
+    "rollback_available": true,
+    "backup_snapshot_count": 421,
+    "backup_schema_table_count": 7,
+    "backup_open_read_check": "pass",
+    "migration_review_queue_count": 32,
+    "migration_review_queue_missing_sha256": 23,
+    "migration_review_queue_unresolved_client": 9,\n    "recovered_hashless_documents_total": 11,\n    "staging_document_count": 261,\n    "document_sequence": 261,
+    "practice_requested_amount_source_eur": 5500000,
+    "practice_requested_amount_destination_eur": 5500000,
+    "default_neon_branch_modified": false,
+    "source_airtable_modified": false,
+    "staging_branch": "br-morning-tree-b2aii623"
+  },
+  "source_cleanup_authorized": false
+}
