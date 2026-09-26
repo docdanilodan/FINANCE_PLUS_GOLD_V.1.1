@@ -1,5 +1,8 @@
-# Compatibility entry point: use the Web/Desktop aligned master workspace.
-from streamlit_desktop_aligned import *  # noqa: F401,F403
-from services.aruba_mail_ui import render_aruba_mail_sidebar
+"""UNICO entrypoint Streamlit per APP_NUOVA_SETT_IA_00 MASTER.
 
-render_aruba_mail_sidebar()
+Niente exec(compile), niente wildcard import, niente entrypoint concorrenti.
+"""
+from financeplus.ui import run_app
+
+if __name__ == "__main__":
+    run_app()
