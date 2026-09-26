@@ -1,0 +1,52 @@
+name: SMART F+ mobile cloud CI
+
+on:
+  push:
+    branches: [mobile-cloud-24x7]
+    paths:
+      - "mobile_cloud/**"
+      - ".github/workflows/mobile-cloud.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "mobile_cloud/**"
+      - ".github/workflows/mobile-cloud.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install cloud gateway requirements
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r mobile_cloud/requirements.txt
+      - name: Compile cloud gateway
+        run: python -m py_compile mobile_cloud/*.py
+      - name: Verify safe startup without secrets
+        shell: bash
+        run: |
+          env -u DATABASE_URL -u NEON_DATABASE_URL -u MISTRAL_API_KEY python - <<'PY'
+          from mobile_cloud.app import health
+          state = health()
+          assert state["database_ready"] is False
+          assert state["requires_pc_online"] is False
+          assert state["serafino_ai"] == "NOT_CONFIGURED"
+          print("SAFE_STARTUP_PASS")
+          PY
+      - name: Reject accidental secret material
+        shell: bash
+        run: |
+          if grep -R -nE 'postgres(ql)?://[^[:space:]]+:[^[:space:]@]+@|sk-[A-Za-z0-9_-]{20,}|-----BEGIN .*PRIVATE KEY-----' mobile_cloud; then
+            echo "Potential secret material found in mobile_cloud"
+            exit 1
+          fi
