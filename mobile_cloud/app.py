@@ -15,7 +15,7 @@ from . import __version__
 
 MASTER="SMART F+ aggiornato - Aruba e Coda"
 EMAIL_RE=re.compile(r"[A-Za-z0-9.!#$%&'*+/=?^_{}|~-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
-MODULES={"clienti":"clienti","elenco clienti":"clienti","scheda clienti":"clienti","cliente 360":"cliente360","cliente360":"cliente360","documenti":"acquisizione","caricamento documenti":"acquisizione","acquisizione documenti":"acquisizione","integrazioni":"acquisizione"}
+MODULES={"clienti":"clienti","i clienti":"clienti","tutti i clienti":"clienti","elenco clienti":"clienti","elenco dei clienti":"clienti","scheda clienti":"clienti","cliente 360":"cliente360","cliente360":"cliente360","documenti":"acquisizione","i documenti":"acquisizione","caricamento documenti":"acquisizione","acquisizione documenti":"acquisizione","integrazioni":"acquisizione"}
 SYSTEM="""Sei SERAFINO 2.1 Cloud di SMART F+. Rispondi in italiano.
 Usa solo i dati verificabili forniti dal database Neon. Non inventare score, DSCR,
 rating, importi o documenti. Le simulazioni SMART F+ non sono delibere bancarie.
@@ -267,10 +267,25 @@ def chat(body:ChatInput,d=Depends(identity)):
         if target in MODULES:
             out=reply("Apro "+target+".","SERAFINO_OPERATORE",{"module":MODULES[target],"client_id":body.client_id})
         else:
-            original=raw.strip()[5:].strip();original=original.split(" ",1)[1] if norm(original).startswith("cliente ") and " " in original else original
+            original=raw.strip()
+            if norm(original).startswith("serafino "):
+                original=original.split(" ",1)[1].strip()
+            if norm(original).startswith("apri "):
+                original=original.split(" ",1)[1].strip()
+            if norm(original).startswith("cliente ") and " " in original:
+                original=original.split(" ",1)[1].strip()
             cl,cands=store.find_client(original,scope)
             if cl:out=reply("Apro Cliente 360 di "+cl["name"]+".","SERAFINO_OPERATORE",{"module":"cliente360","client_id":cl["id"]},source="Neon PostgreSQL / Cliente 360")
             else:out=reply("Cliente non identificato in modo univoco."+(" Possibili corrispondenze: "+", ".join(x["name"] for x in cands) if cands else ""),"SERAFINO_OPERATORE")
+    elif any(phrase in z for phrase in (
+        "quanti clienti sono disponibili",
+        "quanti clienti risultano disponibili",
+        "quanti clienti ci sono",
+        "numero clienti",
+        "conteggio clienti",
+    )):
+        n=store.count("clients","id",scope)
+        out=reply(f"Nel cloud Neon risultano disponibili {n} clienti.","SERAFINO_OPERATORE",source="Neon PostgreSQL / FinancePlus Cloud")
     elif q in {"cosa hai imparato","mostra regole","mostra cosa hai imparato","regole apprese"}:
         rs=store.rules();lines=[r["rule_type"]+": "+r["rule_key"] for r in rs];out=reply("Regole apprese attive:\\n- "+"\\n- ".join(lines) if lines else "Non ho ancora regole apprese attive nel cloud.","SERAFINO_LEARNING")
     else:
