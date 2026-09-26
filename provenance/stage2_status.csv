@@ -1,0 +1,16 @@
+area,status,evidence,remaining
+Neon live connection,TESTATO,FinancePlus Cloud production database reachable and schema inspected,None
+Neon isolated migration,TESTATO,Branch master-stage2-20260916 migration and synthetic CRUD passed,None
+Neon production schema cutover,IMPLEMENTATO E TESTATO,Preflight 0 conflicting rows; rollback snapshot pre-master-stage2-prod-20260916; MASTER tables created and preservation pre_master_* tables verified,Application runtime smoke test against production DATABASE_URL still to execute in deployment environment
+CR 36 months,TESTATO SU 3 DATI REALI,3 real Banca d'Italia PDFs processed; 33/36 36/36 36/36 quantitative coverage,Continue broader multi-sample regression
+Cashflow bank statements,TESTATO SU 3 DATI REALI,3 real statements reconciled exactly against opening/final balances,Continue broader multi-bank format regression
+Gmail,TESTATO,Real message search and real PDF attachment retrieval successful,None for connector read path
+Google Drive,TESTATO READ/WRITE,Real CR/statement downloads plus controlled upload/download roundtrip with exact SHA-256 match,None for controlled connector path
+Airtable,TESTATO READ/WRITE,FinancePlus AI base readable; controlled Documenti record created and read back with Drive URL SHA-256 and mailbox source,None for controlled connector path
+Gmail -> Drive -> Airtable E2E,TESTATO,Real Gmail attachment uploaded to isolated Drive test folder and indexed/read back in Airtable with exact SHA-256,Production application OAuth workflow remains to be smoke-tested from deployed app
+Aruba PEC,RICHIEDE CREDENZIALI,IMAP SSL source inspected; no Aruba-specific connected plugin found; secrets absent from runtime,Configure Aruba account securely in deployment secrets then execute login/sync smoke test
+PDF regression CR,TESTATO,3 generated CR PDFs / 15 pages A4 text-extractable and visually reviewed,Continue sample growth
+PDF regression dossier bank,TESTATO SINTETICO,Current GitHub modules/pdf_dossier.py generator exercised and rendered successfully,Validate with approved real dossier dataset when available
+PDF regression client document report,TESTATO SINTETICO STRESS,Current GitHub modules/client_document_report.py exercised with 64 rows / 7 pages and visually reviewed,Validate against production Airtable client dataset in deployed app
+PDF regression mandates,RICHIEDE SORGENTE ORIGINALE,Current deterministic mandate calculator exists but canonical historical mandate PDF generator not materialized,Recover original mandate PDF source/template before parity claim
+Automated tests,14 PASSED,compileall + pytest -q green after Stage2 regressions,GitHub Actions CI still to execute after branch push

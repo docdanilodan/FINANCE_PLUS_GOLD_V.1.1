@@ -31,7 +31,7 @@ jobs:
 
       - name: Compile unified app and integrations
         run: |
-          python -m py_compile master_app.py streamlit_app.py app.py event_api.py
+          python -m py_compile app.py event_api.py
           python -m py_compile analytics_engine.py document_ai.py
           python -m py_compile modules/*.py services/*.py scripts/*.py FinancePlus_Airtable/client_fascicolo.py
 
