@@ -12,6 +12,7 @@ from fastapi.security import HTTPBearer,HTTPAuthorizationCredentials
 from pydantic import BaseModel,ConfigDict,Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from . import __version__
+from .integrations import connector_presence, init_sentry, posthog_capture, n8n_emit, infocamere_lookup
 
 MASTER="SMART F+ aggiornato - Aruba e Coda"
 EMAIL_RE=re.compile(r"[A-Za-z0-9.!#$%&'*+/=?^_{}|~-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
@@ -197,6 +198,7 @@ try:
 except Exception:
     store=None
 ai=Mistral()
+sentry_status=init_sentry()
 app=FastAPI(title="SMART F+ Mobile Cloud",version=__version__,docs_url=None,redoc_url=None,openapi_url=None)
 app.add_middleware(TrustedHostMiddleware,allowed_hosts=[x.strip() for x in (os.getenv("ALLOWED_HOSTS") or "*.onrender.com,localhost,127.0.0.1").split(",") if x.strip()])
 bearer=HTTPBearer(auto_error=False)
@@ -234,12 +236,30 @@ def identity(credentials:HTTPAuthorizationCredentials|None=Depends(bearer)):
 
 @app.get("/health")
 def health():
-    if store is None:return {"service":"SMART F+ Mobile Cloud","version":__version__,"database_ready":False,"clients":0,"serafino_ai":"READY" if ai.key else "NOT_CONFIGURED","requires_pc_online":False}
-    h=store.health();return {"service":"SMART F+ Mobile Cloud","version":__version__,"database_ready":True,"clients":h["clients"],"serafino_ai":"READY" if ai.key else "NOT_CONFIGURED","requires_pc_online":False}
+    integrations=connector_presence()
+    if store is None:return {"service":"SMART F+ Mobile Cloud","version":__version__,"database_ready":False,"clients":0,"serafino_ai":"READY" if ai.key else "NOT_CONFIGURED","requires_pc_online":False,"integrations":integrations}
+    h=store.health();return {"service":"SMART F+ Mobile Cloud","version":__version__,"database_ready":True,"clients":h["clients"],"serafino_ai":"READY" if ai.key else "NOT_CONFIGURED","requires_pc_online":False,"integrations":integrations}
 @app.post("/v1/session")
-def new_session(body:SessionInput,request:Request):rate("auth:"+str(request.client.host if request.client else "unknown"),12);return require_store().session(body.device_id,body.device_secret)
+def new_session(body:SessionInput,request:Request):
+    rate("auth:"+str(request.client.host if request.client else "unknown"),12)
+    out=require_store().session(body.device_id,body.device_secret)
+    posthog_capture("smartfplus_mobile_session",{"module":"mobile","operation":"session","status":"OK"})
+    n8n_emit("mobile_session",{"module":"mobile","operation":"session","status":"OK"})
+    return out
 @app.get("/v1/capabilities")
-def capabilities(d=Depends(identity)):return {"version":__version__,"master":MASTER,"read":True,"intake":False,"approval_queue":False,"ai_provider":"mistral","ai_configured":bool(ai.key),"push":False,"cloud_sync":True,"requires_pc_online":False,"voice":"ios_on_device_push_to_talk","serafino_operator":True,"serafino_version":"2.1-cloud","navigation_commands":True,"learning":True,"material_actions_require_confirmation":True,"cloud_binary_storage":False}
+def capabilities(d=Depends(identity)):return {"version":__version__,"master":MASTER,"read":True,"intake":False,"approval_queue":False,"ai_provider":"mistral","ai_configured":bool(ai.key),"push":False,"cloud_sync":True,"requires_pc_online":False,"voice":"ios_on_device_push_to_talk","serafino_operator":True,"serafino_version":"2.1-cloud","navigation_commands":True,"learning":True,"material_actions_require_confirmation":True,"cloud_binary_storage":False,"integrations":connector_presence()}
+
+@app.get("/v1/integrations/status")
+def integrations_status(d=Depends(identity)):
+    return {"master":MASTER,"integrations":connector_presence(),"sentry_runtime":sentry_status.get("status","UNKNOWN")}
+
+@app.get("/v1/registry/company/{tax_id}")
+def registry_company(tax_id:str,d=Depends(identity)):
+    result=infocamere_lookup(tax_id)
+    if not result.get("ok"):
+        raise Fault(503 if result.get("status")=="CREDENTIALS_REQUIRED" else 502,"INFOCAMERE_UNAVAILABLE","InfoCamere non disponibile o non configurato.")
+    store.audit("INFOCAMERE_READ",d["id"],None,"OK")
+    return result["data"]
 @app.get("/v1/dashboard")
 def dashboard(d=Depends(identity)):return store.dashboard(d["scope"])
 @app.get("/v1/clients")
@@ -296,4 +316,8 @@ def chat(body:ChatInput,d=Depends(identity)):
             out=reply("Il comando e riconosciuto, ma i file binari non sono ancora nello storage cloud privato. Non importo nulla.","SERAFINO_CLOUD_STORAGE_REQUIRED",notice="Nessuna acquisizione eseguita.",source="SMART F+ / Cloud Storage Gate")
         else:
             text=ai.reply([m.model_dump() for m in body.messages],store.context(body.client_id,scope));out=reply(text,"SERAFINO_CLOUD_MISTRAL",notice="Risposta AI basata sui dati cloud disponibili; nessuna azione materiale eseguita.",source="Neon PostgreSQL / SERAFINO Cloud")
-    store.audit("SERAFINO_CLOUD",d["id"],str(body.client_id) if body.client_id else None,out["mode"]);out["client_id"]=body.client_id;return out
+    store.audit("SERAFINO_CLOUD",d["id"],str(body.client_id) if body.client_id else None,out["mode"])
+    posthog_capture("smartfplus_serafino_cloud",{"module":"serafino","operation":"chat","status":"OK","mode":out["mode"]})
+    n8n_emit("serafino_cloud_event",{"module":"serafino","operation":"chat","status":"OK","mode":out["mode"]})
+    out["client_id"]=body.client_id
+    return out
