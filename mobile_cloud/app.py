@@ -286,15 +286,6 @@ def chat(body:ChatInput,d=Depends(identity)):
     )):
         n=store.count("clients","id",scope)
         out=reply(f"Nel cloud Neon risultano disponibili {n} clienti.","SERAFINO_OPERATORE",source="Neon PostgreSQL / FinancePlus Cloud")
-    elif any(phrase in z for phrase in (
-        "quanti clienti sono disponibili",
-        "quanti clienti risultano disponibili",
-        "quanti clienti ci sono",
-        "numero clienti",
-        "conteggio clienti",
-    )):
-        n=store.count("clients","id",scope)
-        out=reply(f"Nel cloud Neon risultano disponibili {n} clienti.","SERAFINO_OPERATORE",source="Neon PostgreSQL / FinancePlus Cloud")
     elif q in {"cosa hai imparato","mostra regole","mostra cosa hai imparato","regole apprese"}:
         rs=store.rules();lines=[r["rule_type"]+": "+r["rule_key"] for r in rs];out=reply("Regole apprese attive:\\n- "+"\\n- ".join(lines) if lines else "Non ho ancora regole apprese attive nel cloud.","SERAFINO_LEARNING")
     else:
