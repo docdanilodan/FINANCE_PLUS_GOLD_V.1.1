@@ -180,7 +180,7 @@ class RequestIntakeService:
                 "Origine": "FinancePlus",
                 "Sorgente tecnica": "SMART F+ Request Intake",
                 "Tipo evento": "request.intake",
-                "Entita": "Pratiche",
+                "Entità": "Pratiche",
                 "Record ID": record_id[:500],
                 "Azione": action,
                 "Stato": status,
@@ -235,7 +235,7 @@ class RequestIntakeService:
             updates: dict[str, Any] = {
                 "Stato": "Integrazione",
                 "Prossima azione": _append_unique(pf.get("Prossima azione"), action_text),
-                "Alert e criticita": _append_unique(pf.get("Alert e criticita") or pf.get("Alert e criticità"), alert_text, " | "),
+                "Alert e criticità": _append_unique(pf.get("Alert e criticità"), alert_text, " | "),
             }
             if due:
                 updates["Scadenza prossima azione"] = due
@@ -253,9 +253,9 @@ class RequestIntakeService:
                 "Cliente collegato": [target_client_id],
                 "Tipo Pratica": "Altro",
                 "Stato": "Integrazione",
-                "Priorita": "Alta" if due else "Media",
+                "Priorità": "Alta" if due else "Media",
                 "Prossima azione": action_text,
-                "Alert e criticita": alert_text,
+                "Alert e criticità": alert_text,
                 "Stato documentazione": "Incompleta" if docs else "Da verificare",
             }
             if due:
