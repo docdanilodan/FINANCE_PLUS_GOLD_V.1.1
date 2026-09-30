@@ -9,6 +9,7 @@ from jwt import PyJWKClient
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from services.airtable_adapter import AirtableGold
 from services.airtable_mcp_policy import evaluate_airtable_mcp_action
 from services.event_orchestrator import FinancePlusEventOrchestrator
 from services.request_intake import RequestIntakeService, RequestPreview
