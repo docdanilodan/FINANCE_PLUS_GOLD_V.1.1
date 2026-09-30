@@ -23,6 +23,7 @@ from modules.pdf_dossier import build_pdf as build_dossier_pdf
 from services.airtable_adapter import AirtableGold, DEFAULT_BASE_ID
 from services.drive_preview import generic_drive_link, protected_drive_preview
 from services.gmail_drive_pipeline import sync_gmail_attachments
+from services.request_intake import RequestIntakeService, RequestPreview
 from FinancePlus_Airtable.client_fascicolo import build_client_fascicolo_pdf, safe_fascicolo_filename
 
 APP_NAME = "FINANCE_PLUS_UNICO V_1.1"
@@ -200,6 +201,7 @@ CLIENTS = "\U0001F465 Clienti 360"
 PRACTICES = "\U0001F4BC Pratiche"
 DOCUMENTS = "\U0001F4DA Documenti"
 DOC_AI = "\U0001F916 Document AI"
+REQUESTS = "\U0001F514 Richieste"
 MAIL = "\u2709 Email e Drive"
 ANALYTICS = "\U0001F4CA Analisi"
 CR = "\U0001F3E6 Centrale Rischi"
@@ -216,7 +218,7 @@ with st.sidebar:
     st.write("Gmail/Drive: OK" if PROFILES else "Gmail/Drive: da configurare")
     st.write("Data Quality Gate: attivo")
     st.divider()
-    page = st.radio("Navigazione", [DASH, CLIENTS, PRACTICES, DOCUMENTS, DOC_AI, MAIL, ANALYTICS, CR, ACCOUNTS, BP, REPORTS, MANDATES, SETTINGS], label_visibility="collapsed")
+    page = st.radio("Navigazione", [DASH, CLIENTS, PRACTICES, DOCUMENTS, DOC_AI, REQUESTS, MAIL, ANALYTICS, CR, ACCOUNTS, BP, REPORTS, MANDATES, SETTINGS], label_visibility="collapsed")
     st.divider()
     st.caption("Desktop Edition: cartella /desktop su GitHub")
 
@@ -376,6 +378,112 @@ elif page == DOC_AI:
             else: filename = uploaded.name; text, warning = extract_text(uploaded); text = (text + "\n" + pasted).strip(); sha = hashlib.sha256(uploaded.getvalue()).hexdigest(); ext = os.path.splitext(filename)[1] or ".bin"
             result = classify_text((filename + "\n" + text)[:120000]); result.company_name = company.strip() or result.company_name; result.document_year = int(year) or result.document_year; rows.append({"File": filename, "Categoria": result.category, "Confidenza": result.confidence, "Soggetto": result.company_name or "-", "Anno": result.document_year or "-", "Nome proposto": suggested_name(result, extension=ext), "SHA-256": sha, "Nota": warning})
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True); st.info("I dati non leggibili restano da verificare: nessuna ricostruzione arbitraria.")
+
+elif page == REQUESTS:
+    st.subheader("🔔 SMART F+ Request Intake")
+    st.caption("PREPARA → CONFERMA → ESEGUI. La lettura non modifica il MASTER; la scrittura avviene solo dopo approvazione esplicita.")
+
+    if not DB:
+        st.warning("Airtable non autenticato: il Request Intake richiede il CRM operativo.")
+    else:
+        source = st.selectbox("Fonte", ["ChatGPT Work", "Gmail", "Aruba Mail", "Altro"], index=0)
+        external_id = st.text_input("ID richiesta / riferimento (opzionale)", placeholder="es. gmail-message-id o id attività")
+        request_text = st.text_area(
+            "Testo della richiesta",
+            height=180,
+            placeholder="Incolla qui la richiesta, ad esempio: HASHCOM ha documenti da integrare entro il 5 ottobre...",
+        )
+
+        if st.button("🔍 Leggi e verifica", type="primary", use_container_width=True):
+            try:
+                preview = RequestIntakeService(DB).prepare(
+                    request_text=request_text,
+                    source=source,
+                    external_id=external_id,
+                )
+                st.session_state["request_intake_preview"] = preview.to_dict()
+            except Exception as exc:
+                st.error(f"Analisi richiesta non riuscita: {exc}")
+
+        preview_data = st.session_state.get("request_intake_preview")
+        if preview_data:
+            preview = RequestPreview(**preview_data)
+            st.markdown("### Anteprima")
+            a, b, c1, d = st.columns(4)
+            a.metric("Cliente", preview.client_name or "Da associare")
+            b.metric("Pratica", preview.practice_code or "Da associare")
+            c1.metric("Confidenza", f"{preview.confidence:.0%}" if preview.confidence else "N/D")
+            d.metric("Scadenza", preview.due_date or "N/D")
+
+            if preview.requested_documents:
+                st.write("**Documenti rilevati:** " + ", ".join(preview.requested_documents))
+            st.write(f"**Esito matching:** {preview.match_reason}")
+            if preview.duplicate:
+                st.warning(preview.duplicate_reason or "Richiesta già registrata.")
+            else:
+                try:
+                    clients = DB.list_records("clienti", max_records=5000)
+                except Exception:
+                    clients = []
+                client_labels = {r["id"]: str(r.get("fields", {}).get("Cliente", r["id"])) for r in clients}
+                client_ids = [""] + list(client_labels)
+                default_client = preview.client_id if preview.client_id in client_labels else ""
+                client_index = client_ids.index(default_client) if default_client in client_ids else 0
+                selected_client = st.selectbox(
+                    "Cliente destinazione",
+                    client_ids,
+                    index=client_index,
+                    format_func=lambda x: "— Seleziona cliente —" if not x else client_labels.get(x, x),
+                )
+
+                practices = []
+                if selected_client:
+                    try:
+                        for rec in DB.list_records("pratiche", max_records=5000):
+                            pf = rec.get("fields", {})
+                            linked = pf.get("Cliente collegato", [])
+                            if selected_client in linked:
+                                practices.append(rec)
+                    except Exception:
+                        practices = []
+
+                practice_labels = {
+                    r["id"]: f'{r.get("fields", {}).get("Pratica ID", r["id"])} — {r.get("fields", {}).get("Stato", "")}'
+                    for r in practices
+                }
+                practice_ids = [""] + list(practice_labels)
+                default_practice = preview.practice_id if preview.practice_id in practice_labels else ""
+                practice_index = practice_ids.index(default_practice) if default_practice in practice_ids else 0
+                selected_practice = st.selectbox(
+                    "Pratica esistente (opzionale)",
+                    practice_ids,
+                    index=practice_index,
+                    format_func=lambda x: "— Crea nuova pratica di integrazione —" if not x else practice_labels.get(x, x),
+                )
+                approved_by = st.text_input("Approvata da", value="Dr. Danilo D'Angelo")
+
+                st.error("Conferma richiesta: il pulsante seguente scrive nel MASTER SMART F+.")
+                if st.button("✅ APPROVA E INSERISCI IN SMART F+", use_container_width=True):
+                    try:
+                        result = RequestIntakeService(DB).approve(
+                            preview,
+                            client_id=selected_client or None,
+                            practice_id=selected_practice or None,
+                            approved_by=approved_by,
+                        )
+                        if result.get("status") == "applied":
+                            st.success(
+                                f"Richiesta inserita. Pratica {result.get('practice_code', '')} "
+                                f"({result.get('operation', '')})."
+                            )
+                            st.session_state.pop("request_intake_preview", None)
+                        elif result.get("status") == "mapping_required":
+                            st.warning(result.get("message", "Selezionare un cliente."))
+                        else:
+                            st.warning(result.get("message", str(result)))
+                    except Exception as exc:
+                        st.error(f"Inserimento non riuscito: {exc}")
+
 
 elif page == MAIL:
     st.subheader("Email -> Document AI -> Drive -> Airtable"); st.caption("Gmail usa OAuth. Le caselle Aruba sono disponibili anche nel pannello Aruba Mail della sidebar.")

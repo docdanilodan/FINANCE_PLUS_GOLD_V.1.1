@@ -9,8 +9,10 @@ from jwt import PyJWKClient
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from services.airtable_adapter import AirtableGold
 from services.airtable_mcp_policy import evaluate_airtable_mcp_action
 from services.event_orchestrator import FinancePlusEventOrchestrator
+from services.request_intake import RequestIntakeService, RequestPreview
 
 
 app = FastAPI(
@@ -48,6 +50,19 @@ class ExternalEventPayload(BaseModel):
 
 class WorkEventPayload(ExternalEventPayload):
     source_platform: str = Field(default="Gmail")
+
+
+class RequestIntakePreparePayload(BaseModel):
+    request_text: str
+    source: str = Field(default="ChatGPT Work")
+    external_id: str = Field(default="")
+
+
+class RequestIntakeApprovePayload(BaseModel):
+    preview: dict
+    client_id: Optional[str] = None
+    practice_id: Optional[str] = None
+    approved_by: str = Field(default="Utente SMART F+")
 
 
 class AirtableMcpPolicyPayload(BaseModel):
@@ -155,6 +170,52 @@ def airtable_mcp_policy(
         sensitivity=payload.sensitivity,
         source=payload.source,
     ).to_dict()
+
+
+@app.post("/request-intake/prepare")
+def request_intake_prepare(
+    payload: RequestIntakePreparePayload,
+    x_financeplus_webhook_secret: str | None = Header(default=None),
+) -> dict:
+    _authorize(x_financeplus_webhook_secret)
+    try:
+        service = RequestIntakeService(AirtableGold())
+        return service.prepare(
+            request_text=payload.request_text,
+            source=payload.source,
+            external_id=payload.external_id,
+        ).to_dict()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Request intake non disponibile ({type(exc).__name__})",
+        ) from exc
+
+
+@app.post("/request-intake/approve")
+def request_intake_approve(
+    payload: RequestIntakeApprovePayload,
+    x_financeplus_webhook_secret: str | None = Header(default=None),
+) -> dict:
+    _authorize(x_financeplus_webhook_secret)
+    try:
+        preview = RequestPreview(**payload.preview)
+        service = RequestIntakeService(AirtableGold())
+        return service.approve(
+            preview,
+            client_id=payload.client_id,
+            practice_id=payload.practice_id,
+            approved_by=payload.approved_by,
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"Preview non valido: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Applicazione request intake non disponibile ({type(exc).__name__})",
+        ) from exc
 
 
 @app.post("/events")
