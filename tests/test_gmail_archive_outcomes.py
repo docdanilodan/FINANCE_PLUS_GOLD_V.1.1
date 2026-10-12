@@ -4,8 +4,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 pipeline=types.ModuleType('services.gmail_drive_pipeline');pipeline.sync_gmail_attachments=lambda **kw:{'errors':[]}
 auth=types.ModuleType('services.google_auth');auth.discover_google_profiles=lambda:['DEFAULT'];auth.token_env_name=lambda p:'GOOGLE_OAUTH_TOKEN_JSON'
-sys.modules.update({'services':types.ModuleType('services'),'services.gmail_drive_pipeline':pipeline,'services.google_auth':auth})
-spec=importlib.util.spec_from_file_location('archive',Path(__file__).resolve().parents[1]/'scripts'/'sync_gmail_archive.py');mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
+spec=importlib.util.spec_from_file_location('archive',Path(__file__).resolve().parents[1]/'scripts'/'sync_gmail_archive.py');mod=importlib.util.module_from_spec(spec);
+with patch.dict(sys.modules,{'services':types.ModuleType('services'),'services.gmail_drive_pipeline':pipeline,'services.google_auth':auth}):spec.loader.exec_module(mod)
 class Test(unittest.TestCase):
  def run_case(self,result=None,env=None,exc=None):
   cfg={'AIRTABLE_TOKEN':'fixture','AIRTABLE_BASE_ID':'fixture','GOOGLE_OAUTH_TOKEN_JSON':'fixture','GOOGLE_DRIVE_FOLDER_ID':'fixture'} if env is None else env
