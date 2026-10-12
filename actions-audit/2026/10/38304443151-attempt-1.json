@@ -1,0 +1,37 @@
+{
+  "actor": "docdanilodan",
+  "archived_at": "2026-10-12T20:29:24.359747+00:00",
+  "conclusion": "failure",
+  "created_at": "2026-10-12T20:28:27Z",
+  "event": "pull_request",
+  "head_branch": "fix/automation-outcomes-20261012",
+  "head_sha": "0da4eaa68762a3774e0988d8aed1f09cde16388c",
+  "html_url": "https://github.com/docdanilodan/FINANCE_PLUS_GOLD_V.1.1/actions/runs/38304443151",
+  "jobs": [
+    {
+      "completed_at": "2026-10-12T20:29:14Z",
+      "conclusion": "failure",
+      "id": 114994954994,
+      "name": "test",
+      "started_at": "2026-10-12T20:28:30Z",
+      "status": "completed",
+      "steps": [
+        {
+          "conclusion": "failure",
+          "name": "Run tests",
+          "number": 7,
+          "status": "completed"
+        }
+      ]
+    }
+  ],
+  "repository": "docdanilodan/FINANCE_PLUS_GOLD_V.1.1",
+  "run_attempt": 1,
+  "run_id": 38304443151,
+  "run_number": 123,
+  "schema_version": 1,
+  "status": "completed",
+  "updated_at": "2026-10-12T20:29:15Z",
+  "workflow_id": 344309669,
+  "workflow_name": "FinancePlus unified CI"
+}
