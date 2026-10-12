@@ -64,11 +64,22 @@ def main() -> int:
                 max_messages=max_messages,
                 profile=profile,
             )
+            if not isinstance(results[profile], dict):
+                failures += 1
+                results[profile] = {"status": "error", "error": "INVALID_PIPELINE_RESULT"}
+            elif results[profile].get("errors"):
+                failures += 1
+                results[profile]["status"] = "partial_failure"
+                results[profile]["error_count"] = len(results[profile]["errors"])
+                # Logs retain counts, never message identifiers or exception payloads.
+                results[profile].pop("errors", None)
+            if isinstance(results[profile], dict):
+                results[profile].pop("source_email", None)
         except Exception as exc:
             failures += 1
             results[profile] = {
                 "status": "error",
-                "error": f"{type(exc).__name__}: {exc}",
+                "error": type(exc).__name__,
             }
 
     print(json.dumps({"profiles": profiles, "results": results}, ensure_ascii=False, indent=2, default=str))
