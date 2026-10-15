@@ -1,0 +1,37 @@
+{
+  "actor": "docdanilodan",
+  "archived_at": "2026-10-15T23:13:15.124417+00:00",
+  "conclusion": "failure",
+  "created_at": "2026-10-15T23:12:23Z",
+  "event": "schedule",
+  "head_branch": "main",
+  "head_sha": "68ea209f2ca955b56e9648828ddb4639b9be2b9d",
+  "html_url": "https://github.com/docdanilodan/FINANCE_PLUS_GOLD_V.1.1/actions/runs/38822152823",
+  "jobs": [
+    {
+      "completed_at": "2026-10-15T23:13:04Z",
+      "conclusion": "failure",
+      "id": 116721021387,
+      "name": "archive-aruba",
+      "started_at": "2026-10-15T23:12:26Z",
+      "status": "completed",
+      "steps": [
+        {
+          "conclusion": "failure",
+          "name": "Archive Aruba mailboxes",
+          "number": 5,
+          "status": "completed"
+        }
+      ]
+    }
+  ],
+  "repository": "docdanilodan/FINANCE_PLUS_GOLD_V.1.1",
+  "run_attempt": 1,
+  "run_id": 38822152823,
+  "run_number": 260,
+  "schema_version": 1,
+  "status": "completed",
+  "updated_at": "2026-10-15T23:13:05Z",
+  "workflow_id": 344317182,
+  "workflow_name": "FinancePlus automatic Aruba archive"
+}
