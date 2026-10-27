@@ -72,7 +72,7 @@ class Store:
         with self.conn() as c:
             with c.cursor() as cur:
                 cur.execute("SELECT current_database() db,COUNT(*) n FROM clients");r=cur.fetchone()
-        return {"ok":True,"database":r["db"],"clients":int(r["n"])}
+        return {"ok":True,"database":r["db"],"clients":len(self.visibility_policy()["clients"])}
     @staticmethod
     def scope(v):
         if v is None:return None
@@ -85,6 +85,69 @@ class Store:
             try:out.add(int(x))
             except Exception:pass
         return out
+
+    def visibility_policy(self):
+        """Read the operator-approved allowlist on every request (no stale cache)."""
+        try:
+            with self.conn() as c:
+                with c.cursor() as cur:
+                    cur.execute("SELECT client_ids,documents FROM public.smartfplus_selective_visibility_policy WHERE policy_key='mobile_api' AND enabled IS TRUE")
+                    row=cur.fetchone()
+        except Exception:
+            raise Fault(503,"VISIBILITY_POLICY_UNAVAILABLE","Perimetro cloud non verificabile.")
+        if row is None:raise Fault(503,"VISIBILITY_POLICY_UNAVAILABLE","Perimetro cloud non approvato.")
+        try:
+            client_ids=row["client_ids"]
+            documents=row["documents"]
+            if not isinstance(client_ids,(list,tuple)) or not isinstance(documents,list):
+                raise ValueError("POLICY_SHAPE")
+            clients={int(x) for x in client_ids}
+            if not clients or len(clients)!=len(client_ids) or min(clients)<=0:
+                raise ValueError("POLICY_CLIENTS")
+            selected={}
+            for item in documents:
+                ident=int(item["id"])
+                cid=int(item["client_id"])
+                sha=str(item["sha256"]).lower()
+                if ident<=0 or cid not in clients or not re.fullmatch(r"[a-f0-9]{64}",sha) or ident in selected:
+                    raise ValueError("POLICY_DOCUMENT")
+                selected[ident]={"client_id":cid,"sha256":sha}
+            if not selected:raise ValueError("POLICY_DOCUMENTS_EMPTY")
+            return {"clients":clients,"documents":selected}
+        except (ValueError,KeyError,TypeError):
+            raise Fault(503,"VISIBILITY_POLICY_INVALID","Perimetro cloud da verificare.")
+
+    def effective_scope(self,device_scope):
+        approved=self.visibility_policy()["clients"]
+        return set(approved) if device_scope is None else set(device_scope)&approved
+
+    def visible_documents(self,cid,scope):
+        self.require_client(cid,scope)
+        selected={docid:record for docid,record in self.visibility_policy()["documents"].items()
+                  if record["client_id"]==cid}
+        if not selected:return []
+        with self.conn() as c:
+            with c.cursor() as cur:
+                cur.execute("""SELECT id,client_id,COALESCE(title,'Documento') title,
+                    COALESCE(category,'Altro') category,COALESCE(document_date,'') date,LOWER(sha256) sha256
+                    FROM smartfplus_mobile_cloud.documents
+                    WHERE client_id=%s AND id=ANY(%s) ORDER BY id DESC""",(cid,list(selected)))
+                rows=cur.fetchall()
+        if len(rows)!=len(selected):
+            raise Fault(503,"VISIBILITY_DOCUMENT_DRIFT","Catalogo documentale da riconciliare.")
+        output=[]
+        for r in rows:
+            docid=int(r["id"])
+            if (int(r["client_id"])!=cid or
+                not hmac.compare_digest(r["sha256"],selected[docid]["sha256"])):
+                raise Fault(503,"VISIBILITY_DOCUMENT_DRIFT","Impronta documento non corrispondente.")
+            output.append({"id":docid,"client_id":cid,"title":r["title"],
+                           "category":r["category"],"date":r["date"]})
+        return output
+
+    def visible_document_count(self,scope):
+        if not scope:return 0
+        return sum(len(self.visible_documents(cid,scope)) for cid in sorted(scope))
     def session(self,device_id,device_secret):
         now=int(time.time())
         with self.conn() as c:
@@ -124,7 +187,7 @@ class Store:
                 else:cur.execute(f"SELECT COUNT(*) n FROM {table} WHERE {col}=ANY(%s)",(list(scope),))
                 return int(cur.fetchone()["n"])
     def dashboard(self,scope):
-        return {"clients":self.count("clients","id",scope),"documents":self.count("documents","client_id",scope),
+        return {"clients":self.count("clients","id",scope),"documents":self.visible_document_count(scope),
         "requests":self.count("practices","client_id",scope),"pending_mobile":0,
         "master_name":MASTER+" / Neon Cloud","read_at":int(time.time())}
     def clients(self,scope,q=""):
@@ -150,21 +213,22 @@ class Store:
             with c.cursor() as cur:
                 cur.execute("SELECT id,legal_name,COALESCE(vat,'') vat,COALESCE(ateco,'') ateco,COALESCE(legal_form,'') legal_form FROM clients WHERE id=%s",(cid,));cl=cur.fetchone()
                 if not cl:raise Fault(404,"CLIENT_NOT_FOUND","Cliente non disponibile.")
-                cur.execute("""SELECT id,client_id,COALESCE(canonical_name,original_name,'Documento') title,COALESCE(category,'Altro') category,
-                COALESCE(document_date::text,created_at::date::text,'') date FROM documents WHERE client_id=%s ORDER BY created_at DESC,id DESC LIMIT 200""",(cid,));docs=cur.fetchall()
                 cur.execute("""SELECT id,COALESCE(NULLIF(practice_type,''),NULLIF(code,''),'Pratica') title,COALESCE(status,'') status,
                 requested_amount,COALESCE(next_action,'') next_action,COALESCE(missing_documents,'') missing_documents
                 FROM practices WHERE client_id=%s ORDER BY created_at DESC,id DESC LIMIT 100""",(cid,));reqs=cur.fetchall()
                 cur.execute("SELECT analysis_type,data_quality,score,rating,result_json FROM analyses WHERE client_id=%s ORDER BY created_at DESC,id DESC LIMIT 1",(cid,));an=cur.fetchone()
+        docs=self.visible_documents(cid,scope)
         analysis=None
         if an:
             extra=an["result_json"] if isinstance(an["result_json"],dict) else {}
             analysis={"engine_version":an["analysis_type"] or "SMART F+","score":an["score"],"score_band":an["rating"],"debt_capacity":extra.get("debt_capacity"),"data_quality":an["data_quality"]}
         return {"client":{"id":int(cl["id"]),"name":cl["legal_name"] or "","vat":cl["vat"] or "","sector":" · ".join(x for x in (cl["ateco"],cl["legal_form"]) if x)},
-        "documents":[{"id":int(r["id"]),"client_id":int(r["client_id"]),"title":r["title"],"category":r["category"],"date":r["date"]} for r in docs],
+        "documents":docs,
         "requests":[{"id":int(r["id"]),"title":r["title"],"status":r["status"],"amount":money(r["requested_amount"]),"next_action":r["next_action"],"missing_documents":r["missing_documents"]} for r in reqs],
         "tasks":[],"analysis":analysis,"notes":[],"source":"Neon PostgreSQL / FinancePlus Cloud","read_at":int(time.time())}
     def rules(self,limit=30):
+        # Global historical learning rules are not authorized for the selective app view.
+        if self.visibility_policy():return []
         with self.conn() as c:
             with c.cursor() as cur:
                 cur.execute("SELECT * FROM fp_serafino_learning_rules_cloud WHERE active=TRUE ORDER BY updated_at DESC,id DESC LIMIT %s",(limit,));return [dict(r) for r in cur.fetchall()]
@@ -232,7 +296,7 @@ def require_store():
 def identity(credentials:HTTPAuthorizationCredentials|None=Depends(bearer)):
     s=require_store()
     if not credentials or credentials.scheme.lower()!="bearer":raise Fault(401,"AUTH_REQUIRED","Collega e sblocca il dispositivo.")
-    d=s.identity(credentials.credentials);rate("device:"+d["id"],180);return d
+    d=s.identity(credentials.credentials);d["scope"]=s.effective_scope(d["scope"]);rate("device:"+d["id"],180);return d
 
 @app.get("/health")
 def health():
@@ -267,7 +331,11 @@ def clients(q:str="",d=Depends(identity)):return {"items":store.clients(d["scope
 @app.get("/v1/clients/{cid}")
 def client(cid:int,d=Depends(identity)):return store.bundle(cid,d["scope"])
 @app.get("/v1/documents/{ident}/content")
-def document(ident:int,d=Depends(identity)):raise Fault(409,"DOCUMENT_BINARY_NOT_CLOUD","Il metadato e nel cloud, ma il file fisico non e ancora nello storage privato cloud.")
+def document(ident:int,d=Depends(identity)):
+    item=store.visibility_policy()["documents"].get(ident)
+    if item is None or item["client_id"] not in d["scope"]:
+        raise Fault(404,"DOCUMENT_NOT_FOUND","Documento non disponibile.")
+    raise Fault(409,"DOCUMENT_BINARY_NOT_CLOUD","Metadato autorizzato; anteprima binaria non ancora abilitata.")
 @app.get("/v1/intakes")
 def intakes(d=Depends(identity)):return {"items":[]}
 @app.post("/v1/intakes")
