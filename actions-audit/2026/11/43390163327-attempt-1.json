@@ -1,0 +1,37 @@
+{
+  "actor": "docdanilodan",
+  "archived_at": "2026-11-13T08:03:40.933229+00:00",
+  "conclusion": "failure",
+  "created_at": "2026-11-13T08:02:56Z",
+  "event": "schedule",
+  "head_branch": "main",
+  "head_sha": "68ea209f2ca955b56e9648828ddb4639b9be2b9d",
+  "html_url": "https://github.com/docdanilodan/FINANCE_PLUS_GOLD_V.1.1/actions/runs/43390163327",
+  "jobs": [
+    {
+      "completed_at": "2026-11-13T08:03:30Z",
+      "conclusion": "failure",
+      "id": 131767886283,
+      "name": "archive",
+      "started_at": "2026-11-13T08:02:58Z",
+      "status": "completed",
+      "steps": [
+        {
+          "conclusion": "failure",
+          "name": "Archive new Gmail attachments from all configured profiles",
+          "number": 5,
+          "status": "completed"
+        }
+      ]
+    }
+  ],
+  "repository": "docdanilodan/FINANCE_PLUS_GOLD_V.1.1",
+  "run_attempt": 1,
+  "run_id": 43390163327,
+  "run_number": 377,
+  "schema_version": 1,
+  "status": "completed",
+  "updated_at": "2026-11-13T08:03:31Z",
+  "workflow_id": 344308948,
+  "workflow_name": "FinancePlus automatic Gmail archive"
+}
